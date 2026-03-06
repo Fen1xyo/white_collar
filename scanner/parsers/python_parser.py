@@ -15,43 +15,26 @@ class ConcatFoldingVisitor(ast.NodeVisitor):
 
     def visit_Constant(self, node: ast.Constant):
         if isinstance(node.value, str):
-            self.tokens.append({
-                "value": node.value,
-                "line": node.lineno,
-                "file": self.file_path
-            })
+            self.tokens.append({"value": node.value, "line": node.lineno, "file": self.file_path})
         self.generic_visit(node)
 
     def visit_Str(self, node: ast.Str):
         if isinstance(node.s, str):
-            self.tokens.append({
-                "value": node.s,
-                "line": node.lineno,
-                "file": self.file_path
-            })
+            self.tokens.append({"value": node.s, "line": node.lineno, "file": self.file_path})
         self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp):
-        """Посещает узел бинарной операции и пытается 'склеить' строки."""
         if isinstance(node.op, ast.Add):
             left_val = self._get_str_value(node.left)
             right_val = self._get_str_value(node.right)
             if left_val is not None and right_val is not None:
-                self.tokens.append({
-                    "value": left_val + right_val,
-                    "line": node.lineno,
-                    "file": self.file_path
-                })
-                # ИСПРАВЛЕНО: Прекращаем обход этой ветки, чтобы не добавлять части по отдельности
+                self.tokens.append({"value": left_val + right_val, "line": node.lineno, "file": self.file_path})
                 return
-        
         self.generic_visit(node)
 
     def _get_str_value(self, node: ast.AST) -> Optional[str]:
-        """Рекурсивно извлекает строковое значение из узла AST."""
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return node.value
-        # Для обратной совместимости
         if hasattr(ast, 'Str') and isinstance(node, ast.Str):
             return node.s
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
@@ -90,9 +73,7 @@ class PythonParser(BaseParser):
         return 'utf-8'
 
     def get_tokens(self, content: Union[str, bytes], file_path: str) -> List[Dict]:
-        """ Основной метод парсинга, который применяет всю цепочку анализа. """
         if isinstance(content, str):
-            # Если контент уже строка (например, из Git), предполагаем utf-8
             raw_bytes = content.encode('utf-8', errors='replace')
         else:
             raw_bytes = content
@@ -111,20 +92,15 @@ class PythonParser(BaseParser):
             except SyntaxError:
                 continue
         
-        if tree is None:
+        # ИСПРАВЛЕНО: Если парсинг AST прошел успешно, возвращаем только "умные" токены.
+        # Построчный анализ теперь только для fallback-сценария.
+        if tree:
+            visitor = ConcatFoldingVisitor(file_path)
+            visitor.visit(tree)
+            return visitor.get_tokens()
+        else:
+            # Если ни одна версия AST не подошла, переключаемся на построчный анализ
             return self._fallback_line_scan(source, file_path)
 
-        visitor = ConcatFoldingVisitor(file_path)
-        visitor.visit(tree)
-        
-        # Дополнительно добавляем все строки файла для простых regex-детекторов
-        all_tokens = visitor.get_tokens()
-        lines = source.splitlines()
-        for i, line_content in enumerate(lines):
-            all_tokens.append({"value": line_content, "line": i + 1, "file": file_path})
-            
-        return all_tokens
-
     def _fallback_line_scan(self, source: str, file_path: str) -> List[Dict]:
-        """ Резервный механизм. Возвращает каждую строку как отдельный токен. """
         return [{"value": line, "line": i + 1, "file": file_path} for i, line in enumerate(source.splitlines())]

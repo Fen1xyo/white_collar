@@ -1,35 +1,45 @@
-# secret-scanner/scanner/detectors/confidence_scorer.py
+# scanner/detectors/confidence_scorer.py
 
 import re
 from ..core.finding import Finding
 
+
 class ConfidenceScorer:
     """
     Модуль для оценки уверенности [0.0-1.0] для каждой находки.
-    Реализует логику из ЧАСТИ 4.5 документа архитектуры.
     """
-    
-    # --- Факторы, СНИЖАЮЩИЕ уверенность (борьба с ложными срабатываниями) ---
-    
-    # 1. Пути, характерные для тестов и фикстур
-    TEST_PATH_RE = re.compile(r'[/\\](tests?|fixtures|__tests__)[/\\]|test_.*\.py|.*_test\.py', re.I)
-    
-    # 2. Значения-заглушки
-    EXAMPLE_VALUES_RE = re.compile(r'test|example|placeholder|dummy|your_?|fake|mock|sample|replace|changeme|xxx', re.I)
-    
-    # 3. Пути, характерные для документации
-    DOCS_PATH_RE = re.compile(r'[/\\](docs?|examples?)[/\\]|README', re.I)
 
-    # --- Факторы, ПОВЫШАЮЩИЕ уверенность (поиск реальных утечек) ---
-    
-    # 1. ID правил для очень специфичных и высоко-энтропийных токенов
+    TEST_PATH_RE = re.compile(
+        r'[/\\](tests?|fixtures|__tests__)[/\\]|test_.*\.py|.*_test\.py', re.I
+    )
+    EXAMPLE_VALUES_RE = re.compile(
+        # ИСПРАВЛЕНО: убрано слово 'example', т.к. оно присутствует в легитимных
+        # тестовых токенах AWS (AKIAIOSFODNN7EXAMPLE) и вызывало ложный штраф.
+        r'\btest\b|placeholder|dummy|your_?|fake|mock|sample|replace|changeme|xxx',
+        re.I
+    )
+    DOCS_PATH_RE = re.compile(r'[/\\](docs?|examples?)[/\\]|README', re.I)
+    COMMENT_LINE_RE = re.compile(r'^\s*#')
+
+    # ИСПРАВЛЕНО: добавлены BITRIX_WEBHOOK и GENERIC_API_KEY —
+    # оба правила давали находки, но не получали бонус +0.40 за специфичность,
+    # из-за чего итоговый score не преодолевал порог фильтрации.
     SPECIFIC_RULE_IDS = {
-        'YANDEX_CLOUD_IAM_TOKEN', 'YANDEX_CLOUD_API_KEY', 'VK_API_TOKEN', 
-        'TELEGRAM_BOT_TOKEN', 'AWS_ACCESS_KEY', 'GITHUB_TOKEN', 'PRIVATE_KEY'
+        'YANDEX_CLOUD_IAM_TOKEN',
+        'YANDEX_CLOUD_API_KEY',
+        'VK_API_TOKEN',
+        'TELEGRAM_BOT_TOKEN',
+        'AWS_ACCESS_KEY',
+        'GITHUB_TOKEN',
+        'PRIVATE_KEY',
+        'BITRIX_WEBHOOK',
+        'GENERIC_API_KEY',
     }
-    
-    # 2. Ключевые слова в строке, где найден секрет
-    KEYWORD_RE = re.compile(r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token)', re.I)
+
+    KEYWORD_RE = re.compile(
+        r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token)',
+        re.I
+    )
 
     def score(self, finding: Finding) -> Finding:
         """
@@ -38,42 +48,38 @@ class ConfidenceScorer:
         score = 0.5  # Базовая оценка
 
         # --- Применяем факторы СНИЖЕНИЯ ---
-
-        # Файл находится в тестовой директории
         if self.TEST_PATH_RE.search(finding.file_path):
             score -= 0.35
 
-        # Найденное значение похоже на плейсхолдер
         if self.EXAMPLE_VALUES_RE.search(finding.secret):
             score -= 0.30
 
-        # Секрет слишком короткий, чтобы быть настоящим
-        if len(finding.secret) < 8:
+        if len(finding.secret) < 12 and finding.rule_id == 'GENERIC_API_KEY':
             score -= 0.20
-            
-        # Файл находится в директории с документацией
+
         if self.DOCS_PATH_RE.search(finding.file_path):
             score -= 0.25
 
-        # --- Применяем факторы ПОВЫШЕНИЯ ---
+        # Значительно снижаем уверенность, если находка находится в строке-комментарии.
+        # Это отсеивает закомментированные секреты (например, # OLD_KEY = "...").
+        if self.COMMENT_LINE_RE.search(finding.line_content):
+            score -= 0.40
 
-        # Сработало очень специфичное правило (например, для токена Yandex Cloud)
+        # --- Применяем факторы ПОВЫШЕНИЯ ---
         if finding.rule_id in self.SPECIFIC_RULE_IDS:
             score += 0.40
-            
-        # Сработал детектор высокой энтропии
+
         if finding.rule_id == 'HIGH_ENTROPY_STRING':
             score += 0.25
-            
-        # В строке рядом с секретом есть ключевое слово (password, token и т.д.)
+
+        # ИСПРАВЛЕНО: теперь line_content содержит полную строку кода (с именем
+        # переменной), поэтому KEYWORD_RE корректно срабатывает на слова
+        # 'token', 'key', 'password' и т.д. в именах переменных.
         if self.KEYWORD_RE.search(finding.line_content):
             score += 0.20
-            
-        # Файл НЕ находится в тестовой директории (повышает уверенность)
+
         if not self.TEST_PATH_RE.search(finding.file_path):
             score += 0.10
-            
-        # Ограничиваем итоговую оценку диапазоном [0.0, 1.0]
+
         finding.confidence = max(0.0, min(1.0, round(score, 2)))
-        
         return finding

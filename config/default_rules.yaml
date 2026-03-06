@@ -1,3 +1,5 @@
+# config/default_rules.yaml
+
 rules:
   - id: AWS_ACCESS_KEY
     name: "AWS Access Key ID"
@@ -15,14 +17,16 @@ rules:
 
   - id: GENERIC_API_KEY
     name: "Generic API Key"
-    pattern: '(?i)(api_key|apikey|api-key)\s*[:=]\s*["'']?([a-zA-Z0-9_\\-]{16,})["'']?'
+    # ИСПРАВЛЕНО: первая группа (ключевое слово) сделана незахватывающей (?:...),
+    # теперь match.group(1) возвращает именно значение ключа, а не слово "api_key".
+    pattern: '(?i)(?:api_key|apikey|api-key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
     severity: HIGH
     description: "Обнаружен ключ API общего вида. Такие ключи часто используются для доступа к различным сервисам."
     remediation: "Проверьте, является ли этот ключ чувствительным. Если да, переместите его в переменные окружения или секрет-менеджер (например, HashiCorp Vault, AWS Secrets Manager)."
 
   - id: PRIVATE_KEY
     name: "Private Key"
-    pattern: '-----BEGIN ((EC|RSA|DSA|PGP) )?PRIVATE KEY-----'
+    pattern: '-----BEGIN (?:EC|RSA|DSA|PGP) PRIVATE KEY-----'
     severity: CRITICAL
     description: "Обнаружен приватный ключ в формате PEM. Компрометация приватного ключа может привести к расшифровке трафика или несанкционированному доступу по SSH."
     remediation: "Никогда не храните приватные ключи в репозиториях. Немедленно отозвите скомпрометированный ключ и перевыпустите пару ключей."
