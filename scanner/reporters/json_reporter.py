@@ -2,24 +2,19 @@
 
 import json
 from typing import List, Dict, Any, Optional
-
-# --- Контекст: Импортируем общие классы ---
-from .console_reporter import BaseReporter 
+# ИСПРАВЛЕНО: импортируем базовый класс напрямую
+from .base import BaseReporter
 from ..core.finding import Finding
-from ..rules.rule_loader import Rule
-
-# --- Полная реализация JSONReporter ---
+from ..rules.rule import Rule
 
 class JSONReporter(BaseReporter):
     """Генерирует подробный отчет в формате JSON."""
-
     def __init__(self, rules: List[Rule]):
         super().__init__(rules)
 
     def _finding_to_dict(self, finding: Finding) -> Dict[str, Any]:
         """Сериализует объект Finding в словарь для JSON."""
         rule = self.rules_map.get(finding.rule_id)
-        
         return {
             "file_path": finding.file_path,
             "line_number": finding.line_number,
@@ -38,11 +33,8 @@ class JSONReporter(BaseReporter):
         }
 
     def generate_report(self, findings: List[Finding], output_file: Optional[str] = None):
-        """
-        Основной метод для генерации JSON-отчета.
-        """
+        """ Основной метод для генерации JSON-отчета. """
         actual_findings_count = len([f for f in findings if not f.whitelisted])
-        
         report = {
             "summary": {
                 "total_findings": len(findings),
@@ -52,7 +44,6 @@ class JSONReporter(BaseReporter):
             "findings": [self._finding_to_dict(f) for f in findings]
         }
         
-        # Преобразуем в JSON с красивым форматированием
         report_json = json.dumps(report, indent=2, ensure_ascii=False)
         
         if output_file:
@@ -63,6 +54,4 @@ class JSONReporter(BaseReporter):
             except IOError as e:
                 print(f"Ошибка: Не удалось записать JSON отчет в файл {output_file}: {e}")
         else:
-            # Если файл не указан, выводим в консоль
             print(report_json)
-

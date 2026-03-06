@@ -19,14 +19,13 @@ from scanner.rules.rule_loader import RuleLoader
 
 app = Flask(__name__)
 app.secret_key = 'super-secret-key-for-flask-flashes' # Ключ для flash-сообщений
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Ограничение размера загружаемого файла (16 MB)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # Ограничение размера загружаемого файла (16 MB)
 
 def get_scanner_engine() -> ScanEngine:
     """Инициализирует и возвращает экземпляр движка сканера."""
     config_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config'))
     with open(os.path.join(config_dir, 'settings.yaml'), 'r', encoding='utf-8') as f:
         config: Dict[str, Any] = yaml.safe_load(f)
-    
     config['rule_paths'] = [
         os.path.join(config_dir, 'default_rules.yaml'),
         os.path.join(config_dir, 'ru_rules.yaml')
@@ -35,10 +34,10 @@ def get_scanner_engine() -> ScanEngine:
 
 # Создаем один экземпляр движка при старте приложения
 scanner_engine = get_scanner_engine()
+
 # Загружаем правила для передачи в HTML-шаблон
 rules = RuleLoader(scanner_engine.config['rule_paths']).load_rules()
 rules_map = {rule.id: rule for rule in rules}
-
 
 @app.route('/')
 def index():
@@ -53,14 +52,15 @@ def scan():
         return redirect(url_for('index'))
     
     file = request.files['project_zip']
+    
     if file.filename == '':
         flash('Файл не выбран.', 'error')
         return redirect(url_for('index'))
-
+    
+    # ИСПРАВЛЕНО: Полностью переписана логика обработки
     if file and file.filename.endswith('.zip'):
         filename = secure_filename(file.filename)
         temp_dir = tempfile.mkdtemp() # Создаем безопасную временную директорию
-        
         try:
             zip_path = os.path.join(temp_dir, filename)
             file.save(zip_path)
@@ -79,9 +79,9 @@ def scan():
             findings_with_rules = [
                 {"finding": f, "rule": rules_map.get(f.rule_id)} for f in findings
             ]
-
+            
             return render_template(
-                'report.html', 
+                'report.html',
                 findings_with_rules=findings_with_rules,
                 title=f"Отчет для {filename}"
             )
@@ -91,9 +91,10 @@ def scan():
         finally:
             # Гарантированно удаляем временную директорию со всем содержимым
             shutil.rmtree(temp_dir)
-
-    flash('Пожалуйста, загрузите корректный ZIP-архив.', 'error')
-    return redirect(url_for('index'))
+    else:
+        # Если файл не .zip, сообщаем об ошибке
+        flash('Пожалуйста, загрузите корректный ZIP-архив.', 'error')
+        return redirect(url_for('index'))
 
 if __name__ == '__main__':
     # Для локального запуска. В продакшене используется gunicorn или другой WSGI-сервер.

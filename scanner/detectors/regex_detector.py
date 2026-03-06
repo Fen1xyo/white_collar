@@ -2,27 +2,13 @@
 
 import re
 from typing import List, Optional
-from abc import ABC, abstractmethod
+# ИСПРАВЛЕНО: импортируем базовый класс, а не определяем заново
+from .base import BaseDetector
 from ..core.finding import Finding
-from ..rules.rule_loader import Rule
+from ..rules.rule import Rule
 
-# --- Базовый класс для всех детекторов ---
-class BaseDetector(ABC):
-    """Абстрактный базовый класс для всех детекторов."""
-
-    @abstractmethod
-    def detect(self, content: str, file_path: str, line_number: int, commit: Optional[str] = None) -> List[Finding]:
-        """
-        Анализирует фрагмент контента и возвращает список находок.
-        """
-        pass
-
-# --- Реализация Regex-детектора ---
 class RegexDetector(BaseDetector):
-    """
-    Детектор, использующий регулярные выражения из загруженных правил для поиска секретов.
-    """
-
+    """ Детектор, использующий регулярные выражения из загруженных правил для поиска секретов. """
     def __init__(self, rules: List[Rule]):
         self.rules = rules
         # Компилируем все регулярные выражения один раз для повышения производительности
@@ -37,19 +23,14 @@ class RegexDetector(BaseDetector):
                 print(f"Ошибка компиляции регулярного выражения для правила '{rule.id}': {e}. Правило будет пропущено.")
 
     def detect(self, content: str, file_path: str, line_number: int, commit: Optional[str] = None) -> List[Finding]:
-        """
-        Применяет все скомпилированные регулярные выражения к переданной строке контента.
-        """
+        """ Применяет все скомпилированные регулярные выражения к переданной строке контента. """
         findings: List[Finding] = []
-        
         for compiled_rule in self.compiled_rules:
             rule = compiled_rule["rule"]
             pattern = compiled_rule["pattern"]
-            
             try:
                 # Ищем все непересекающиеся совпадения в строке
                 matches = pattern.finditer(content)
-                
                 for match in matches:
                     # Если в regex есть группы, приоритет у первой группы, иначе - полное совпадение
                     secret = match.group(1) if match.groups() else match.group(0)
@@ -57,7 +38,7 @@ class RegexDetector(BaseDetector):
                     # Пропускаем пустые находки
                     if not secret:
                         continue
-
+                        
                     # Создаем объект находки
                     finding = Finding(
                         file_path=file_path,
@@ -73,5 +54,4 @@ class RegexDetector(BaseDetector):
             except Exception as e:
                 # Этот блок перехватывает неожиданные ошибки во время выполнения finditer
                 print(f"Ошибка при применении правила '{rule.id}' к файлу {file_path}:{line_number}: {e}")
-                
         return findings
