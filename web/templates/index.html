@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Secret Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Secret Scanner v2.0</h1>
+        <p>Загрузите ZIP-архив вашего проекта для сканирования на наличие секретов.</p>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flashes">
+            {% for category, message in messages %}
+              <div class="flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form action="/scan" method="post" enctype="multipart/form-data">
+            <input type="file" name="project_zip" accept=".zip" required>
+            <button type="submit">Сканировать</button>
+        </form>
+    </div>
+</body>
+</html>

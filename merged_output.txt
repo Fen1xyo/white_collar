@@ -1,0 +1,2180 @@
+# ============================================================
+# FILE: README.md
+# ============================================================
+
+# 🔍 Secret Scanner — Архитектура v2.0
+
+Это специализированный сканер для поиска захардкоженных секретов в коде, конфигурационных файлах и истории Git.
+
+### Ключевые особенности
+
+- **Поддержка российских облачных провайдеров**: Включает правила для Yandex Cloud, VK Cloud, Selectel, SberCloud, Telegram и других.
+- **Устойчивость к ошибкам**: Не падает на синтаксических ошибках в коде благодаря механизму `fallback_to_regex`.
+- **Работа с легаси-кодом**: Автоматически определяет и обрабатывает файлы в кодировке `Windows-1251` (cp1251).
+- **Снижение ложных срабатываний**: Использует скоринг уверенности (`ConfidenceScorer`) для оценки вероятности того, что найденная строка является реальным секретом.
+- **Гибкая настройка**: Поддерживает whitelist-файлы (`.secretsignore`) для игнорирования известных и безопасных находок.
+- **Глубокий анализ**:
+  - Python: Склеивает конкатенированные строки (`"abc" + "def"`).
+  - C/C++: Обрабатывает смежные строковые литералы (`"abc" "def"`).
+  - Конфиги: Парсит `.env`, `docker-compose.yml`, `.ini`, `.yaml` и другие форматы.
+- **Сканирование Git**: Анализирует не только текущие файлы, но и всю историю коммитов.
+
+### Быстрый старт
+
+1.  **Установка зависимостей:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2.  **Запуск сканирования из командной строки:**
+    ```bash
+    python cli/main.py /path/to/your/project
+    ```
+
+3.  **Основные опции CLI:**
+    - `--report-format html`: Сгенерировать HTML-отчет.
+    - `--output-file report.html`: Указать путь для отчета.
+    - `--min-confidence 0.7`: Показывать только находки с высокой уверенностью.
+    - `--scan-git`: Включить сканирование всей истории Git.
+
+4.  **Запуск через веб-интерфейс:**
+    ```bash
+    python web/app.py
+    ```
+    После этого откройте `http://127.0.0.1:5000` в вашем браузере.
+
+# ============================================================
+# FILE: requirements.txt
+# ============================================================
+
+# Основные зависимости для ядра сканера
+PyYAML==6.0.1
+colorama==0.4.6
+chardet==5.2.0
+GitPython==3.1.41
+
+# Зависимости для веб-интерфейса
+Flask==3.0.0
+Jinja2==3.1.3
+
+# Зависимости для запуска тестов
+pytest==7.4.0
+
+# ============================================================
+# FILE: scan.py
+# ============================================================
+
+import os
+import argparse
+
+
+COMMENT_STYLES = {
+    ".py":   ("# ", ""),
+    ".js":   ("// ", ""),
+    ".ts":   ("// ", ""),
+    ".jsx":  ("// ", ""),
+    ".tsx":  ("// ", ""),
+    ".cpp":  ("// ", ""),
+    ".c":    ("// ", ""),
+    ".h":    ("// ", ""),
+    ".java": ("// ", ""),
+    ".go":   ("// ", ""),
+    ".rs":   ("// ", ""),
+    ".css":  ("/* ", " */"),
+    ".html": ("<!-- ", " -->"),
+    ".xml":  ("<!-- ", " -->"),
+    ".sh":   ("# ", ""),
+    ".rb":   ("# ", ""),
+    ".php":  ("// ", ""),
+    ".sql":  ("-- ", ""),
+    ".lua":  ("-- ", ""),
+    ".r":    ("# ", ""),
+    ".yaml": ("# ", ""),
+    ".yml":  ("# ", ""),
+    ".toml": ("# ", ""),
+}
+
+DEFAULT_COMMENT = ("# ", "")
+
+
+def get_comment(filepath: str, text: str) -> str:
+    ext = os.path.splitext(filepath)[1].lower()
+    prefix, suffix = COMMENT_STYLES.get(ext, DEFAULT_COMMENT)
+    return f"{prefix}{text}{suffix}"
+
+
+def merge_files(
+    source_dir: str,
+    output_file: str,
+    extensions: list[str] | None = None,
+    encoding: str = "utf-8",
+    skip_binary: bool = True,
+) -> None:
+    source_dir = os.path.abspath(source_dir)
+    output_file = os.path.abspath(output_file)
+
+    exts = [e.lower() if e.startswith(".") else f".{e.lower()}" for e in extensions] if extensions else None
+
+    collected = []
+    for root, dirs, files in os.walk(source_dir):
+        # Skip hidden directories
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        for filename in sorted(files):
+            if filename.startswith("."):
+                continue
+            filepath = os.path.join(root, filename)
+            # Skip the output file itself
+            if filepath == output_file:
+                continue
+            ext = os.path.splitext(filename)[1].lower()
+            if exts and ext not in exts:
+                continue
+            collected.append(filepath)
+
+    total = len(collected)
+    print(f"Found {total} file(s) in '{source_dir}'")
+
+    with open(output_file, "w", encoding=encoding) as out:
+        for i, filepath in enumerate(collected, 1):
+            rel_path = os.path.relpath(filepath, source_dir)
+
+            # Try to read as text
+            content = None
+            if skip_binary:
+                try:
+                    with open(filepath, "r", encoding=encoding) as f:
+                        content = f.read()
+                except (UnicodeDecodeError, PermissionError):
+                    print(f"  [{i}/{total}] SKIPPED (binary/unreadable): {rel_path}")
+                    continue
+            else:
+                with open(filepath, "r", encoding=encoding, errors="replace") as f:
+                    content = f.read()
+
+            separator = get_comment(filepath, "=" * 60)
+            header    = get_comment(filepath, f"FILE: {rel_path}")
+            footer    = get_comment(filepath, "=" * 60)
+
+            out.write(f"{separator}\n")
+            out.write(f"{header}\n")
+            out.write(f"{footer}\n\n")
+            out.write(content)
+            if not content.endswith("\n"):
+                out.write("\n")
+            out.write("\n")
+
+            print(f"  [{i}/{total}] {rel_path}")
+
+    print(f"\nDone! Merged into: {output_file}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Merge all files in a directory into a single file with path comments."
+    )
+    parser.add_argument(
+        "source_dir",
+        nargs="?",
+        default=".",
+        help="Source directory to scan (default: current directory)",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        default="merged_output.txt",
+        help="Output file path (default: merged_output.txt)",
+    )
+    parser.add_argument(
+        "-e", "--ext",
+        nargs="*",
+        metavar="EXT",
+        help="Only include files with these extensions, e.g. -e .py .js .ts",
+    )
+    parser.add_argument(
+        "--encoding",
+        default="utf-8",
+        help="File encoding (default: utf-8)",
+    )
+    parser.add_argument(
+        "--include-binary",
+        action="store_true",
+        help="Try to include binary files (may produce garbled output)",
+    )
+
+    args = parser.parse_args()
+
+    merge_files(
+        source_dir=args.source_dir,
+        output_file=args.output,
+        extensions=args.ext,
+        encoding=args.encoding,
+        skip_binary=not args.include_binary,
+    )
+
+
+if __name__ == "__main__":
+    main()
+
+# ============================================================
+# FILE: cli/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: cli/main.py
+# ============================================================
+
+# secret-scanner/cli/main.py
+
+import argparse
+import os
+import sys
+import yaml
+from typing import List, Dict, Any
+
+# Добавляем корневую директорию проекта в sys.path, чтобы можно было запускать как "python cli/main.py"
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from scanner.core.engine import ScanEngine
+from scanner.reporters.console_reporter import ConsoleReporter
+from scanner.reporters.json_reporter import JSONReporter
+from scanner.reporters.html_reporter import HTMLReporter
+from scanner.rules.rule_loader import RuleLoader
+
+def main():
+    """
+    Главная функция, точка входа для CLI.
+    """
+    parser = argparse.ArgumentParser(
+        description="🔍 Secret Scanner v2.0 — Поиск захардкоженных секретов в коде и истории Git.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument("path", help="Путь к директории проекта для сканирования.")
+    parser.add_argument(
+        "--report-format", 
+        choices=['console', 'json', 'html'], 
+        default='console', 
+        help="Формат итогового отчета (по умолчанию: console)."
+    )
+    parser.add_argument(
+        "--output-file", 
+        help="Имя файла для сохранения отчета (для форматов json и html)."
+    )
+    parser.add_argument(
+        "--min-confidence", 
+        type=float, 
+        default=0.4, 
+        help="Минимальный уровень уверенности для отображения находок [0.0-1.0].\n"
+             "Рекомендуемые значения:\n"
+             "  0.0 - показать всё\n"
+             "  0.4 - средний уровень (по умолчанию)\n"
+             "  0.7 - только находки с высокой уверенностью."
+    )
+    parser.add_argument(
+        "--no-ru-rules", 
+        action='store_true', 
+        help="Исключить из сканирования правила для российских сервисов."
+    )
+    parser.add_argument(
+        "--scan-git", 
+        action='store_true', 
+        help="Включить полное сканирование всей истории Git-репозитория."
+    )
+    
+    args = parser.parse_args()
+
+    if not os.path.isdir(args.path):
+        print(f"Ошибка: Указанный путь '{args.path}' не является директорией или не существует.")
+        sys.exit(1)
+
+    try:
+        # 1. Загрузка глобальной конфигурации (исключения и расширения)
+        config_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config'))
+        with open(os.path.join(config_dir, 'settings.yaml'), 'r', encoding='utf-8') as f:
+            config: Dict[str, Any] = yaml.safe_load(f)
+
+        # 2. Формирование списка файлов с правилами на основе аргументов
+        rule_paths = [os.path.join(config_dir, 'default_rules.yaml')]
+        if not args.no_ru_rules:
+            rule_paths.append(os.path.join(config_dir, 'ru_rules.yaml'))
+        config['rule_paths'] = rule_paths
+        
+        # 3. Инициализация движка сканирования
+        engine = ScanEngine(config)
+
+        # 4. Запуск сканирования
+        findings = engine.run(args.path, args.scan_git)
+
+        # 5. Фильтрация результатов по уровню уверенности
+        # Находки без оценки confidence считаются как 0.5 (средняя)
+        final_findings = [f for f in findings if (f.confidence or 0.5) >= args.min_confidence]
+
+        # 6. Выбор и запуск репортера
+        # Загружаем правила еще раз, чтобы передать их в репортер для вывода описаний
+        rules = RuleLoader(config['rule_paths']).load_rules()
+        reporters = {
+            'console': ConsoleReporter(rules),
+            'json': JSONReporter(rules),
+            'html': HTMLReporter(rules)
+        }
+        reporter = reporters[args.report_format]
+        reporter.generate_report(final_findings, args.output_file)
+
+    except KeyboardInterrupt:
+        print("\nСканирование прервано пользователем.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\nПроизошла критическая ошибка: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+
+# ============================================================
+# FILE: config/default_rules.yaml
+# ============================================================
+
+rules:
+  - id: AWS_ACCESS_KEY
+    name: "AWS Access Key ID"
+    pattern: 'AKIA[0-9A-Z]{16}'
+    severity: CRITICAL
+    description: "Обнаружен AWS Access Key ID. Этот ключ является частью учетных данных AWS и может предоставить доступ к ресурсам облака."
+    remediation: "Немедленно отозвать ключ в консоли AWS IAM. Для аутентификации приложений использовать IAM-роли или переменные окружения."
+
+  - id: GITHUB_TOKEN
+    name: "GitHub Token"
+    pattern: 'ghp_[a-zA-Z0-9]{36}'
+    severity: CRITICAL
+    description: "Обнаружен персональный токен доступа (PAT) GitHub."
+    remediation: "Немедленно отозвать токен в настройках профиля GitHub (Settings -> Developer settings -> Personal access tokens). Храните токены в секрет-менеджерах."
+
+  - id: GENERIC_API_KEY
+    name: "Generic API Key"
+    pattern: '(?i)(api_key|apikey|api-key)\s*[:=]\s*["'']?([a-zA-Z0-9_\\-]{16,})["'']?'
+    severity: HIGH
+    description: "Обнаружен ключ API общего вида. Такие ключи часто используются для доступа к различным сервисам."
+    remediation: "Проверьте, является ли этот ключ чувствительным. Если да, переместите его в переменные окружения или секрет-менеджер (например, HashiCorp Vault, AWS Secrets Manager)."
+
+  - id: PRIVATE_KEY
+    name: "Private Key"
+    pattern: '-----BEGIN ((EC|RSA|DSA|PGP) )?PRIVATE KEY-----'
+    severity: CRITICAL
+    description: "Обнаружен приватный ключ в формате PEM. Компрометация приватного ключа может привести к расшифровке трафика или несанкционированному доступу по SSH."
+    remediation: "Никогда не храните приватные ключи в репозиториях. Немедленно отозвите скомпрометированный ключ и перевыпустите пару ключей."
+
+# ============================================================
+# FILE: config/ru_rules.yaml
+# ============================================================
+
+rules:
+  - id: YANDEX_CLOUD_IAM_TOKEN
+    name: "Yandex Cloud IAM Token"
+    pattern: 't1\.[A-Za-z0-9_\\-]{150,}'
+    severity: CRITICAL
+    description: "Обнаружен Yandex Cloud IAM-токен. Это короткоживущий токен для аутентификации в Yandex Cloud."
+    remediation: >
+      IAM-токены живут максимум 12 часов. Если токен старше — возможно, он уже истёк, но его следует отозвать. Используйте сервисный аккаунт и авторизованные ключи для долгоживущих процессов.
+
+  - id: YANDEX_CLOUD_API_KEY
+    name: "Yandex Cloud API Key"
+    pattern: '(AQVN|AQVJ)[A-Za-z0-9_\\-]{35,}'
+    severity: CRITICAL
+    description: "Обнаружен статический API-ключ сервисного аккаунта Yandex Cloud."
+    remediation: >
+      Немедленно отзовите ключ в консоли Yandex Cloud: IAM → Сервисные аккаунты → [ваш аккаунт] → API-ключи. Создайте новый и передавайте через переменную окружения или секрет в Yandex Lockbox.
+
+  - id: VK_API_TOKEN
+    name: "VK API Access Token"
+    pattern: 'vk1\.a\.[A-Za-z0-9_\\-]{80,}'
+    severity: HIGH
+    description: "Обнаружен токен доступа VK API. Может использоваться для выполнения действий от имени пользователя или сообщества."
+    remediation: >
+      Отзовите токен через VK ID → Безопасность. Для серверных приложений используйте сервисный ключ (service_token), а не пользовательский.
+
+  - id: TELEGRAM_BOT_TOKEN
+    name: "Telegram Bot API Token"
+    pattern: '\d{8,10}:AA[A-Za-z0-9_\\-]{33}'
+    severity: CRITICAL
+    description: "Обнаружен токен Telegram Bot API. Позволяет полностью контролировать бота."
+    remediation: >
+      Немедленно отзовите токен командой /revoke у @BotFather. Передавайте токен через переменную окружения.
+
+  - id: BITRIX_WEBHOOK
+    name: "1C-Bitrix Webhook URL"
+    pattern: 'https://[a-zA-Z0-9\\-.]+\.bitrix24\.ru/rest/\d+/([a-z0-9]{32,})'
+    severity: HIGH
+    description: "Обнаружен URL входящего вебхука 1C-Bitrix24 с токеном. Позволяет отправлять данные в ваш портал Bitrix24."
+    remediation: >
+      Удалите вебхук в настройках портала Bitrix24 (Разработчикам → Входящие webhook). Создайте новый и передавайте его URL через переменную окружения.
+
+# ============================================================
+# FILE: config/settings.yaml
+# ============================================================
+
+exclude_dirs:
+  - ".git"
+  - ".idea"
+  - ".vscode"
+  - "__pycache__"
+  - "node_modules"
+  - "build"
+  - "dist"
+  - "venv"
+  - ".venv"
+  - "env"
+
+scan_extensions:
+  - ".py"
+  - ".c"
+  - ".h"
+  - ".cpp"
+  - ".go"
+  - ".java"
+  - ".js"
+  - ".ts"
+  - ".php"
+  - ".rb"
+  - ".sh"
+  - ".yaml"
+  - ".yml"
+  - ".json"
+  - ".ini"
+  - ".cfg"
+  - ".conf"
+  - ".env"
+  - "Makefile"
+  - "requirements.txt"
+  - "docker-compose.yml"
+
+# ============================================================
+# FILE: scanner/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: scanner/core/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: scanner/core/engine.py
+# ============================================================
+
+# secret-scanner/scanner/core/engine.py
+
+import os
+from typing import List, Dict, Any, Optional, Set
+
+from .file_walker import FileWalker
+from .finding import Finding
+from ..rules.rule_loader import RuleLoader
+from ..parsers.base import BaseParser
+from ..parsers.python_parser import PythonParser
+from ..parsers.c_parser import CParser
+from ..parsers.config_parser import ConfigParser
+from ..detectors.regex_detector import RegexDetector
+from ..detectors.entropy_detector import EntropyDetector
+from ..detectors.confidence_scorer import ConfidenceScorer
+from ..whitelist.whitelist_manager import WhitelistManager
+
+class ScanEngine:
+    """
+    Основной движок сканирования.
+    Оркестрирует все компоненты: FileWalker, парсеры, детекторы, скоринг и whitelist.
+    """
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        
+        # 1. Загрузка правил
+        self.rules = RuleLoader(config.get('rule_paths', [])).load_rules()
+        
+        # 2. Инициализация обходчика файлов
+        self.file_walker = FileWalker(
+            project_path=".", # Будет переопределен при запуске
+            exclude_dirs=config.get('exclude_dirs', []),
+            scan_extensions=config.get('scan_extensions', [])
+        )
+        
+        # 3. Инициализация парсеров для разных типов файлов
+        self.parsers: Dict[str, BaseParser] = {
+            '.py': PythonParser(),
+            '.c': CParser(),
+            '.h': CParser(),
+            '.env': ConfigParser(),
+            'makefile': ConfigParser(),
+            '.yaml': ConfigParser(),
+            '.yml': ConfigParser(),
+            '.ini': ConfigParser(),
+            '.cfg': ConfigParser(),
+            '.conf': ConfigParser(),
+            'requirements.txt': ConfigParser(),
+            'docker-compose.yml': ConfigParser(),
+        }
+        self.default_parser = ConfigParser() # Парсер для всех остальных файлов
+        
+        # 4. Инициализация детекторов
+        self.detectors = [
+            RegexDetector(self.rules),
+            EntropyDetector()
+            # Сюда можно добавить KeywordDetector, когда он будет реализован
+        ]
+        
+        # 5. Инициализация модулей пост-обработки
+        self.confidence_scorer = ConfidenceScorer()
+        self.whitelist_manager: Optional[WhitelistManager] = None
+
+    def _get_parser(self, file_path: str) -> BaseParser:
+        """Роутер: выбирает подходящий парсер для файла."""
+        filename = os.path.basename(file_path).lower()
+        ext = os.path.splitext(filename)[1]
+        
+        # Сначала ищем парсер по полному имени файла (например, 'Makefile')
+        if filename in self.parsers:
+            return self.parsers[filename]
+        # Затем по расширению
+        if ext in self.parsers:
+            return self.parsers[ext]
+        # Если ничего не найдено, используем парсер по умолчанию
+        return self.default_parser
+
+    def run(self, project_path: str, scan_git: bool = False) -> List[Finding]:
+        """
+        Главный метод, запускающий полный цикл сканирования.
+        """
+        self.file_walker.project_path = project_path
+        self.whitelist_manager = WhitelistManager(project_path)
+        
+        # Используем set для автоматической дедупликации находок
+        all_findings: Set[Finding] = set()
+
+        if scan_git:
+            print("Запущено сканирование истории Git (это может занять время)...")
+            for content, file_path, commit_hash in self.file_walker.scan_git_history():
+                findings_in_content = self._scan_content(content, file_path, commit_hash)
+                all_findings.update(findings_in_content)
+        else:
+            print("Запущено сканирование файловой системы...")
+            for file_path in self.file_walker.walk_files():
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                        content = f.read()
+                    findings_in_file = self._scan_content(content, file_path)
+                    all_findings.update(findings_in_file)
+                except Exception as e:
+                    print(f"Ошибка: не удалось прочитать или обработать файл {file_path}: {e}")
+
+        print(f"Сканирование завершено. Найдено уникальных потенциальных секретов: {len(all_findings)}.")
+        print("Запуск пост-обработки: оценка уверенности и применение белого списка...")
+
+        # Пост-обработка:
+        # 1. Применяем скоринг уверенности к каждой находке
+        scored_findings = [self.confidence_scorer.score(f) for f in all_findings]
+        
+        # 2. Применяем фильтры из .secretsignore
+        final_findings = self.whitelist_manager.filter(scored_findings)
+
+        # 3. Сортируем для консистентного вывода
+        final_findings.sort(key=lambda f: (f.file_path, f.line_number, f.rule_id))
+        
+        return final_findings
+
+    def _scan_content(self, content: str, file_path: str, commit: Optional[str] = None) -> List[Finding]:
+        """
+        Сканирует содержимое одного файла (или blob'а из Git).
+        """
+        findings = []
+        
+        # 1. Выбираем парсер для получения токенов
+        parser = self._get_parser(file_path)
+        # Парсер возвращает либо "умные" токены (строки из AST), либо просто все строки файла
+        tokens = parser.get_tokens(content, file_path)
+
+        # 2. Запускаем все детекторы на каждом токене
+        for token in tokens:
+            for detector in self.detectors:
+                # Детектор анализирует значение токена и его контекст
+                new_findings = detector.detect(
+                    content=token["value"],
+                    file_path=file_path,
+                    line_number=token["line"],
+                    commit=commit
+                )
+                if new_findings:
+                    findings.extend(new_findings)
+            
+        return findings
+
+# ============================================================
+# FILE: scanner/core/file_walker.py
+# ============================================================
+
+# secret-scanner/scanner/core/file_walker.py
+
+import os
+from typing import List, Generator, Optional, Set
+import git
+
+class FileWalker:
+    """
+    Класс для обхода файловой системы и истории Git.
+    Отвечает на вопрос "Какие файлы и какое их содержимое мы должны сканировать?".
+    """
+    def __init__(self, project_path: str, exclude_dirs: List[str], scan_extensions: List[str]):
+        self.project_path = os.path.abspath(project_path)
+        self.exclude_dirs: Set[str] = set(exclude_dirs)
+        self.scan_extensions: Set[str] = set(scan_extensions)
+
+    def _should_scan_file(self, filename: str) -> bool:
+        """
+        Внутренний метод для проверки, нужно ли сканировать файл.
+        Проверяет по расширению или по полному имени (для файлов типа 'Makefile').
+        """
+        # Простое имя файла, например, 'Makefile'
+        basename = os.path.basename(filename).lower()
+        # Расширение, например, '.py'
+        ext = os.path.splitext(filename)[1].lower()
+        
+        return basename in self.scan_extensions or ext in self.scan_extensions
+
+    def walk_files(self) -> Generator[str, None, None]:
+        """
+        Обходит директорию проекта и возвращает пути к файлам для сканирования.
+        Использует генератор для экономии памяти.
+        """
+        for root, dirs, files in os.walk(self.project_path, topdown=True):
+            # Исключаем нежелательные директории из дальнейшего обхода
+            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
+            
+            for file in files:
+                if self._should_scan_file(file):
+                    full_path = os.path.join(root, file)
+                    yield full_path
+
+    def scan_git_history(self) -> Generator[Tuple[str, str, str], None, None]:
+        """
+        Сканирует всю историю Git, возвращая содержимое каждого файла (blob) в каждом коммите.
+        Возвращает кортеж: (содержимое_файла, путь_к_файлу, хеш_коммита).
+        """
+        try:
+            repo = git.Repo(self.project_path)
+            if repo.bare:
+                print(f"Предупреждение: Репозиторий {self.project_path} является 'bare', сканирование истории может быть неполным.")
+                return
+        except git.InvalidGitRepositoryError:
+            print(f"Ошибка: Директория {self.project_path} не является Git-репозиторием. Сканирование истории Git невозможно.")
+            return
+        except git.NoSuchPathError:
+            print(f"Ошибка: Путь к репозиторию {self.project_path} не найден.")
+            return
+
+        # Получаем список всех коммитов во всех ветках
+        all_commits = list(repo.iter_commits('--all'))
+        
+        # Используем set для отслеживания уже просканированных blob'ов (файл-версий)
+        # Это позволяет не сканировать один и тот же файл повторно, если он не менялся между коммитами.
+        scanned_blobs: Set[str] = set()
+
+        for commit in all_commits:
+            try:
+                # Рекурсивно обходим все файлы в дереве коммита
+                for blob in commit.tree.traverse():
+                    if blob.type == 'blob' and blob.hexsha not in scanned_blobs:
+                        if self._should_scan_file(blob.path):
+                            scanned_blobs.add(blob.hexsha)
+                            try:
+                                # Декодируем содержимое файла, пропуская ошибки
+                                content = blob.data_stream.read().decode('utf-8', errors='replace')
+                                yield content, blob.path, commit.hexsha
+                            except Exception:
+                                # Пропускаем бинарные или поврежденные файлы, которые не удалось декодировать
+                                continue
+            except Exception as e:
+                print(f"Предупреждение: Не удалось полностью обработать коммит {commit.hexsha[:7]}: {e}")
+                continue
+
+# ============================================================
+# FILE: scanner/core/finding.py
+# ============================================================
+
+# secret-scanner/scanner/core/finding.py
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class Finding:
+    file_path: str
+    line_number: int
+    commit: Optional[str]
+    rule_id: str
+    rule_name: str
+    severity: str
+    secret: str
+    line_content: str
+    confidence: Optional[float] = None
+    whitelisted: bool = False
+
+    def __post_init__(self):
+        if len(self.line_content) > 200:
+            self.line_content = self.line_content[:200] + "..."
+        if self.commit and len(self.commit) > 7:
+            self.commit = self.commit[:7]
+
+    def __hash__(self):
+        return hash((self.file_path, self.line_number, self.rule_id, self.commit))
+
+    def __eq__(self, other):
+        if not isinstance(other, Finding): return NotImplemented
+        return (self.file_path == other.file_path and
+                self.line_number == other.line_number and
+                self.rule_id == other.rule_id and
+                self.commit == other.commit)
+
+# ============================================================
+# FILE: scanner/detectors/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: scanner/detectors/base.py
+# ============================================================
+
+# secret-scanner/scanner/detectors/base.py
+from abc import ABC, abstractmethod
+from typing import List, Optional
+from ..core.finding import Finding
+
+class BaseDetector(ABC):
+    @abstractmethod
+    def detect(self, content: str, file_path: str, line_number: int, commit: Optional[str] = None) -> List[Finding]:
+        pass
+
+# ============================================================
+# FILE: scanner/detectors/confidence_scorer.py
+# ============================================================
+
+# secret-scanner/scanner/detectors/confidence_scorer.py
+
+import re
+from ..core.finding import Finding
+
+class ConfidenceScorer:
+    """
+    Модуль для оценки уверенности [0.0-1.0] для каждой находки.
+    Реализует логику из ЧАСТИ 4.5 документа архитектуры.
+    """
+    
+    # --- Факторы, СНИЖАЮЩИЕ уверенность (борьба с ложными срабатываниями) ---
+    
+    # 1. Пути, характерные для тестов и фикстур
+    TEST_PATH_RE = re.compile(r'[/\\](tests?|fixtures|__tests__)[/\\]|test_.*\.py|.*_test\.py', re.I)
+    
+    # 2. Значения-заглушки
+    EXAMPLE_VALUES_RE = re.compile(r'test|example|placeholder|dummy|your_?|fake|mock|sample|replace|changeme|xxx', re.I)
+    
+    # 3. Пути, характерные для документации
+    DOCS_PATH_RE = re.compile(r'[/\\](docs?|examples?)[/\\]|README', re.I)
+
+    # --- Факторы, ПОВЫШАЮЩИЕ уверенность (поиск реальных утечек) ---
+    
+    # 1. ID правил для очень специфичных и высоко-энтропийных токенов
+    SPECIFIC_RULE_IDS = {
+        'YANDEX_CLOUD_IAM_TOKEN', 'YANDEX_CLOUD_API_KEY', 'VK_API_TOKEN', 
+        'TELEGRAM_BOT_TOKEN', 'AWS_ACCESS_KEY', 'GITHUB_TOKEN', 'PRIVATE_KEY'
+    }
+    
+    # 2. Ключевые слова в строке, где найден секрет
+    KEYWORD_RE = re.compile(r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token)', re.I)
+
+    def score(self, finding: Finding) -> Finding:
+        """
+        Присваивает оценку уверенности (confidence) находке, модифицируя объект Finding.
+        """
+        score = 0.5  # Базовая оценка
+
+        # --- Применяем факторы СНИЖЕНИЯ ---
+
+        # Файл находится в тестовой директории
+        if self.TEST_PATH_RE.search(finding.file_path):
+            score -= 0.35
+
+        # Найденное значение похоже на плейсхолдер
+        if self.EXAMPLE_VALUES_RE.search(finding.secret):
+            score -= 0.30
+
+        # Секрет слишком короткий, чтобы быть настоящим
+        if len(finding.secret) < 8:
+            score -= 0.20
+            
+        # Файл находится в директории с документацией
+        if self.DOCS_PATH_RE.search(finding.file_path):
+            score -= 0.25
+
+        # --- Применяем факторы ПОВЫШЕНИЯ ---
+
+        # Сработало очень специфичное правило (например, для токена Yandex Cloud)
+        if finding.rule_id in self.SPECIFIC_RULE_IDS:
+            score += 0.40
+            
+        # Сработал детектор высокой энтропии
+        if finding.rule_id == 'HIGH_ENTROPY_STRING':
+            score += 0.25
+            
+        # В строке рядом с секретом есть ключевое слово (password, token и т.д.)
+        if self.KEYWORD_RE.search(finding.line_content):
+            score += 0.20
+            
+        # Файл НЕ находится в тестовой директории (повышает уверенность)
+        if not self.TEST_PATH_RE.search(finding.file_path):
+            score += 0.10
+            
+        # Ограничиваем итоговую оценку диапазоном [0.0, 1.0]
+        finding.confidence = max(0.0, min(1.0, round(score, 2)))
+        
+        return finding
+
+# ============================================================
+# FILE: scanner/detectors/regex_detector.py
+# ============================================================
+
+# secret-scanner/scanner/detectors/regex_detector.py
+
+import re
+from typing import List, Optional
+from abc import ABC, abstractmethod
+from ..core.finding import Finding
+from ..rules.rule_loader import Rule
+
+# --- Базовый класс для всех детекторов ---
+class BaseDetector(ABC):
+    """Абстрактный базовый класс для всех детекторов."""
+
+    @abstractmethod
+    def detect(self, content: str, file_path: str, line_number: int, commit: Optional[str] = None) -> List[Finding]:
+        """
+        Анализирует фрагмент контента и возвращает список находок.
+        """
+        pass
+
+# --- Реализация Regex-детектора ---
+class RegexDetector(BaseDetector):
+    """
+    Детектор, использующий регулярные выражения из загруженных правил для поиска секретов.
+    """
+
+    def __init__(self, rules: List[Rule]):
+        self.rules = rules
+        # Компилируем все регулярные выражения один раз для повышения производительности
+        self.compiled_rules = []
+        for rule in self.rules:
+            try:
+                self.compiled_rules.append({
+                    "rule": rule,
+                    "pattern": re.compile(rule.pattern)
+                })
+            except re.error as e:
+                print(f"Ошибка компиляции регулярного выражения для правила '{rule.id}': {e}. Правило будет пропущено.")
+
+    def detect(self, content: str, file_path: str, line_number: int, commit: Optional[str] = None) -> List[Finding]:
+        """
+        Применяет все скомпилированные регулярные выражения к переданной строке контента.
+        """
+        findings: List[Finding] = []
+        
+        for compiled_rule in self.compiled_rules:
+            rule = compiled_rule["rule"]
+            pattern = compiled_rule["pattern"]
+            
+            try:
+                # Ищем все непересекающиеся совпадения в строке
+                matches = pattern.finditer(content)
+                
+                for match in matches:
+                    # Если в regex есть группы, приоритет у первой группы, иначе - полное совпадение
+                    secret = match.group(1) if match.groups() else match.group(0)
+                    
+                    # Пропускаем пустые находки
+                    if not secret:
+                        continue
+
+                    # Создаем объект находки
+                    finding = Finding(
+                        file_path=file_path,
+                        line_number=line_number,
+                        commit=commit,
+                        rule_id=rule.id,
+                        rule_name=rule.name,
+                        severity=rule.severity,
+                        secret=secret,
+                        line_content=content.strip() # Сохраняем всю строку для контекста
+                    )
+                    findings.append(finding)
+            except Exception as e:
+                # Этот блок перехватывает неожиданные ошибки во время выполнения finditer
+                print(f"Ошибка при применении правила '{rule.id}' к файлу {file_path}:{line_number}: {e}")
+                
+        return findings
+
+# ============================================================
+# FILE: scanner/parsers/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: scanner/parsers/base.py
+# ============================================================
+
+# secret-scanner/scanner/parsers/base.py
+from abc import ABC, abstractmethod
+from typing import List, Dict
+
+class BaseParser(ABC):
+    @abstractmethod
+    def get_tokens(self, content: str, file_path: str) -> List[Dict]:
+        pass
+
+# ============================================================
+# FILE: scanner/parsers/c_parser.py
+# ============================================================
+
+# secret-scanner/scanner/parsers/c_parser.py
+
+import re
+from typing import List, Dict
+from .base import BaseParser
+
+class CParser(BaseParser):
+    """
+    Парсер для C/C++, который находит строковые литералы, уделяя
+    особое внимание склейке смежных литералов.
+    """
+    
+    # Regex для удаления блочных комментариев (включая многострочные)
+    BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
+    # Regex для удаления строчных комментариев
+    LINE_COMMENT_RE = re.compile(r'//.*')
+    
+    # Regex для поиска смежных строковых литералов, разделенных пробелами/переносами строк.
+    # Пример: "hello" " world"
+    ADJACENT_STRINGS_RE = re.compile(r'("([^"\\]|\\.)*?")(\s*("([^"\\]|\\.)*?"))+')
+    
+    # Regex для поиска всех оставшихся (одиночных) строковых литералов.
+    SINGLE_STRING_RE = re.compile(r'"([^"\\]|\\.)*?"')
+
+    def _clean_content(self, content: str) -> str:
+        """Удаляет все комментарии из C-кода."""
+        content = self.BLOCK_COMMENT_RE.sub('', content)
+        content = self.LINE_COMMENT_RE.sub('', content)
+        return content
+
+    def get_tokens(self, content: str, file_path: str) -> List[Dict]:
+        """
+        Основной метод, который очищает код от комментариев и извлекает все строковые литералы.
+        """
+        cleaned_content = self._clean_content(content)
+        
+        # Используем словарь для хранения найденных строк, чтобы избежать дублирования
+        # при двухпроходном сканировании. Ключ - позиция начала строки в файле.
+        found_strings: Dict[int, Tuple[str, int]] = {}
+
+        # 1. Первый проход: ищем и склеиваем смежные строки
+        for match in self.ADJACENT_STRINGS_RE.finditer(cleaned_content):
+            full_match_str = match.group(0)
+            
+            # "Склеиваем" части, удаляя кавычки и пробелы между ними
+            # Пример: "hello" " world" -> helloworld
+            glued_value = "".join(re.findall(r'"(.*?)"', full_match_str))
+            
+            start_pos = match.start()
+            line_number = cleaned_content.count('\n', 0, start_pos) + 1
+            
+            found_strings[start_pos] = (glued_value, line_number)
+
+        # 2. Второй проход: ищем все одиночные строки
+        for match in self.SINGLE_STRING_RE.finditer(cleaned_content):
+            start_pos = match.start()
+            # Если строка с этой позиции уже была обработана (как часть смежной), пропускаем ее
+            if start_pos in found_strings:
+                continue
+
+            # Извлекаем значение без кавычек
+            value = match.group(0)[1:-1]
+            line_number = cleaned_content.count('\n', 0, start_pos) + 1
+            found_strings[start_pos] = (value, line_number)
+
+        # 3. Формируем итоговый список токенов
+        tokens = [
+            {"value": val, "line": line, "file": file_path}
+            for pos, (val, line) in found_strings.items()
+        ]
+        
+        # Для полной совместимости с RegexDetector'ом, который работает построчно,
+        # добавим также и все строки файла как токены. Это создает избыточность,
+        # но гарантирует, что ни один детектор не пропустит свою цель.
+        for i, line in enumerate(content.splitlines()):
+            tokens.append({"value": line, "line": i + 1, "file": file_path})
+
+        return tokens
+
+# ============================================================
+# FILE: scanner/parsers/config_parser.py
+# ============================================================
+
+# secret-scanner/scanner/parsers/config_parser.py
+
+import re
+import os
+from typing import List, Dict, Any, Generator
+import yaml
+import configparser
+from .base import BaseParser
+
+class ConfigParser(BaseParser):
+    """
+    Универсальный парсер для различных форматов конфигурационных файлов.
+    Использует правильный метод парсинга в зависимости от типа файла.
+    """
+    
+    # Regex для .env и Makefile: KEY=VALUE, KEY = VALUE, KEY:=VALUE
+    # Захватывает значение, учитывая опциональные кавычки.
+    ENV_RE = re.compile(r'^\s*(?:export\s+)?([\w.-]+)\s*[:=]\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s#]+))')
+    
+    # Regex для requirements.txt: ищет URL с аутентификацией
+    REQ_URL_RE = re.compile(r'https?://([^:]+:[^@]+)@')
+
+    def get_tokens(self, content: str, file_path: str) -> List[Dict]:
+        """Диспетчер: выбирает метод парсинга на основе имени файла."""
+        filename = os.path.basename(file_path).lower()
+        ext = os.path.splitext(filename)[1]
+
+        parser_map = {
+            '.env': self._parse_env,
+            'makefile': self._parse_env, # Makefile имеет схожий синтаксис переменных
+            '.yaml': self._parse_yaml,
+            '.yml': self._parse_yaml,
+            '.ini': self._parse_ini,
+            '.cfg': self._parse_ini,
+            '.conf': self._parse_ini, # Часто .conf файлы имеют .ini-синтаксис
+            'requirements.txt': self._parse_requirements,
+        }
+        
+        # Выбираем парсер для расширения или для имени файла целиком (например, 'Makefile')
+        parser_func = parser_map.get(ext, parser_map.get(filename))
+
+        if parser_func:
+            try:
+                return list(parser_func(content, file_path))
+            except Exception as e:
+                # Если специализированный парсер упал, переключаемся на простой построчный анализ
+                print(f"Ошибка парсинга {file_path} как {filename}: {e}. Используется fallback.")
+                return list(self._fallback_scan(content, file_path))
+        
+        # Если нет специального парсера, просто сканируем построчно
+        return list(self._fallback_scan(content, file_path))
+
+    def _fallback_scan(self, content: str, file_path: str) -> Generator[Dict, None, None]:
+        """Резервный метод: возвращает каждую непустую строку как токен."""
+        for i, line in enumerate(content.splitlines(), 1):
+            if line.strip():
+                yield {"value": line, "line": i, "file": file_path}
+
+    def _parse_env(self, content: str, file_path: str) -> Generator[Dict, None, None]:
+        """Парсит .env-подобные файлы."""
+        for i, line in enumerate(content.splitlines(), 1):
+            match = self.ENV_RE.match(line)
+            if match:
+                # match.group(2) - в двойных кавычках, group(3) - в одинарных, group(4) - без кавычек
+                value = next((v for v in match.groups()[1:] if v is not None), None)
+                if value:
+                    yield {"value": value, "line": i, "file": file_path}
+
+    def _parse_yaml(self, content: str, file_path: str) -> Generator[Dict, None, None]:
+        """Рекурсивно парсит YAML-файлы, извлекая все строковые значения."""
+        try:
+            data = yaml.safe_load(content)
+            # Номера строк в YAML точно определить сложно, поэтому сканируем и построчно
+            yield from self._fallback_scan(content, file_path)
+        except yaml.YAMLError:
+            # Если YAML невалидный, просто сканируем его как текст
+            yield from self._fallback_scan(content, file_path)
+
+    def _parse_ini(self, content: str, file_path: str) -> Generator[Dict, None, None]:
+        """Парсит .ini/.cfg файлы."""
+        parser = configparser.ConfigParser(interpolation=None)
+        try:
+            parser.read_string(content)
+            for section in parser.sections():
+                for key, value in parser.items(section):
+                    if value:
+                        # Точно определить номер строки сложно, поэтому ищем значение в тексте
+                        for i, line in enumerate(content.splitlines(), 1):
+                            if value in line:
+                                yield {"value": value, "line": i, "file": file_path}
+                                break # Нашли первое вхождение, этого достаточно
+        except configparser.Error:
+            yield from self._fallback_scan(content, file_path)
+
+    def _parse_requirements(self, content: str, file_path: str) -> Generator[Dict, None, None]:
+        """Ищет креды в URL в requirements.txt."""
+        for i, line in enumerate(content.splitlines(), 1):
+            match = self.REQ_URL_RE.search(line)
+            if match:
+                # Возвращаем часть user:pass
+                yield {"value": match.group(1), "line": i, "file": file_path}
+
+# ============================================================
+# FILE: scanner/parsers/python_parser.py
+# ============================================================
+
+# secret-scanner/scanner/parsers/python_parser.py
+
+import ast
+import re
+import sys
+from typing import List, Dict, Optional, Tuple
+import chardet
+from .base import BaseParser
+
+class ConcatFoldingVisitor(ast.NodeVisitor):
+    """
+    AST Visitor для рекурсивного вычисления строковых выражений.
+    Корректно обрабатывает как `node.Constant` (Python 3.8+), так и `node.Str` (старые версии),
+    а также вложенные `BinOp` вида "a" + "b" + "c".
+    """
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+        self.tokens: List[Dict] = []
+
+    def visit_Constant(self, node: ast.Constant):
+        """Посещает узел константы (для Python 3.8+)."""
+        if isinstance(node.value, str):
+            self.tokens.append({
+                "value": node.value,
+                "line": node.lineno,
+                "file": self.file_path
+            })
+        self.generic_visit(node)
+
+    def visit_Str(self, node: ast.Str):
+        """Посещает узел строки (для обратной совместимости)."""
+        if isinstance(node.s, str):
+            self.tokens.append({
+                "value": node.s,
+                "line": node.lineno,
+                "file": self.file_path
+            })
+        self.generic_visit(node)
+
+    def visit_BinOp(self, node: ast.BinOp):
+        """Посещает узел бинарной операции и пытается 'склеить' строки."""
+        if isinstance(node.op, ast.Add):
+            left_val = self._get_str_value(node.left)
+            right_val = self._get_str_value(node.right)
+            
+            if left_val is not None and right_val is not None:
+                self.tokens.append({
+                    "value": left_val + right_val,
+                    "line": node.lineno,
+                    "file": self.file_path
+                })
+                return
+        
+        self.generic_visit(node)
+
+    def _get_str_value(self, node: ast.AST) -> Optional[str]:
+        """Рекурсивно извлекает строковое значение из узла AST."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Str):
+            return node.s
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = self._get_str_value(node.left)
+            right = self._get_str_value(node.right)
+            if left is not None and right is not None:
+                return left + right
+        return None
+
+    def get_tokens(self) -> List[Dict]:
+        return self.tokens
+
+class PythonParser(BaseParser):
+    """
+    Продвинутый парсер для Python, который динамически поддерживает все
+    версии синтаксиса от 3.8 до текущей версии интерпретатора.
+    """
+    
+    # --- НАЧАЛО ИЗМЕНЕНИЙ ---
+    # Динамически генерируем список версий для проверки, от самой новой к самой старой.
+    # Это делает сканер устойчивым к будущим обновлениям Python.
+    
+    # Определяем текущую версию Python, на которой запущен сканер
+    CURRENT_PY_VERSION = (sys.version_info.major, sys.version_info.minor)
+    # Определяем самую старую поддерживаемую версию
+    OLDEST_SUPPORTED_MINOR = 8
+    
+    PYTHON_VERSIONS: List[Tuple[int, int]] = []
+    if CURRENT_PY_VERSION[0] == 3 and CURRENT_PY_VERSION[1] >= OLDEST_SUPPORTED_MINOR:
+        # Создаем список версий в порядке убывания: от текущей до 3.8 включительно.
+        # Например, для Python 3.12 результат будет: [(3, 12), (3, 11), (3, 10), (3, 9), (3, 8)]
+        PYTHON_VERSIONS = [
+            (3, minor) for minor in range(CURRENT_PY_VERSION[1], OLDEST_SUPPORTED_MINOR - 1, -1)
+        ]
+    else:
+        # Если сканер запущен на слишком старом Python, используем хотя бы 3.8
+        PYTHON_VERSIONS = [(3, OLDEST_SUPPORTED_MINOR)]
+    # --- КОНЕЦ ИЗМЕНЕНИЙ ---
+
+    CODING_RE = re.compile(br'^[ \t\f]*#.*?coding[:=][ \t]*([-_.a-zA-Z0-9]+)')
+
+    def _detect_encoding(self, raw_bytes: bytes) -> str:
+        """
+        Реализует многоступенчатое определение кодировки файла.
+        """
+        if raw_bytes.startswith(b'\xef\xbb\xbf'):
+            return 'utf-8-sig'
+        
+        for line in raw_bytes.split(b'\n')[:2]:
+            match = self.CODING_RE.match(line)
+            if match:
+                return match.group(1).decode('ascii')
+
+        try:
+            result = chardet.detect(raw_bytes)
+            encoding = result['encoding']
+            if encoding and result['confidence'] > 0.7:
+                return encoding
+        except Exception:
+            pass
+
+        return 'utf-8'
+
+    def get_tokens(self, file_content: str, file_path: str) -> List[Dict]:
+        """
+        Основной метод парсинга, который применяет всю цепочку анализа.
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                raw_bytes = f.read()
+        except (IOError, FileNotFoundError):
+            return []
+
+        encoding = self._detect_encoding(raw_bytes)
+        try:
+            source = raw_bytes.decode(encoding, errors='replace')
+        except (UnicodeDecodeError, TypeError):
+            return self._fallback_line_scan(raw_bytes.decode('utf-8', errors='replace'), file_path)
+
+        tree: Optional[ast.AST] = None
+        # Пытаемся распарсить файл, начиная с самой современной версии синтаксиса
+        for major, minor in self.PYTHON_VERSIONS:
+            try:
+                tree = ast.parse(source, filename=file_path, feature_version=(major, minor))
+                break
+            except SyntaxError:
+                continue
+
+        if tree is None:
+            # Fallback: если ни одна версия AST не подошла, переключаемся на построчный анализ
+            return self._fallback_line_scan(source, file_path)
+
+        # Успешный парсинг: обходим AST для сбора токенов
+        visitor = ConcatFoldingVisitor(file_path)
+        visitor.visit(tree)
+        return visitor.get_tokens()
+
+    def _fallback_line_scan(self, source: str, file_path: str) -> List[Dict]:
+        """
+        Резервный механизм. Возвращает каждую строку как отдельный токен.
+        """
+        tokens = []
+        for i, line in enumerate(source.splitlines()):
+            tokens.append({"value": line, "line": i + 1, "file": file_path})
+        return tokens
+
+# ============================================================
+# FILE: scanner/reporters/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: scanner/reporters/base.py
+# ============================================================
+
+# secret-scanner/scanner/reporters/base.py
+from abc import ABC, abstractmethod
+from typing import List, Optional
+from ..core.finding import Finding
+from ..rules.rule import Rule
+
+class BaseReporter(ABC):
+    def __init__(self, rules: List[Rule]):
+        self.rules_map = {rule.id: rule for rule in rules}
+
+    @abstractmethod
+    def generate_report(self, findings: List[Finding], output_file: Optional[str] = None):
+        pass
+
+# ============================================================
+# FILE: scanner/reporters/console_reporter.py
+# ============================================================
+
+# secret-scanner/scanner/reporters/console_reporter.py
+
+from typing import List, Optional
+from colorama import Fore, Style, init
+from abc import ABC, abstractmethod
+
+from ..core.finding import Finding
+from ..rules.rule_loader import Rule # Импортируем для type hinting
+
+# --- Контекст: Базовый класс и датаклассы ---
+
+class BaseReporter(ABC):
+    """Абстрактный базовый класс для всех репортеров."""
+    def __init__(self, rules: List[Rule]):
+        # Репортерам нужны правила, чтобы иметь доступ к описаниям и рекомендациям
+        self.rules_map = {rule.id: rule for rule in rules}
+
+    @abstractmethod
+    def generate_report(self, findings: List[Finding], output_file: Optional[str] = None):
+        """Генерирует отчет на основе списка находок."""
+        pass
+
+# --- Полная реализация ConsoleReporter ---
+
+class ConsoleReporter(BaseReporter):
+    """Выводит подробный, цветной отчет в консоль."""
+
+    def __init__(self, rules: List[Rule]):
+        super().__init__(rules)
+        init(autoreset=True) # Инициализация colorama
+
+    SEVERITY_COLORS = {
+        "CRITICAL": Fore.RED,
+        "HIGH": Fore.YELLOW,
+        "MEDIUM": Fore.BLUE,
+        "LOW": Fore.GREEN,
+    }
+
+    CONFIDENCE_TEXT = {
+        "HIGH": (Fore.GREEN, "[✓ ВЫСОКАЯ]"),
+        "MEDIUM": (Fore.YELLOW, "[? СРЕДНЯЯ]"),
+        "LOW": (Fore.CYAN, "[~ НИЗКАЯ]"),
+    }
+
+    def _get_confidence_level(self, score: Optional[float]) -> str:
+        """Преобразует числовую оценку в текстовый уровень."""
+        if score is None: return "MEDIUM"
+        if score >= 0.7: return "HIGH"
+        if score >= 0.4: return "MEDIUM"
+        return "LOW"
+
+    def generate_report(self, findings: List[Finding], output_file: Optional[str] = None):
+        """Основной метод для генерации консольного отчета."""
+        
+        # Отфильтровываем находки, попавшие в белый список
+        actual_findings = [f for f in findings if not f.whitelisted]
+
+        if not actual_findings:
+            print(Fore.GREEN + "✅ Сканирование завершено. Реальные секреты не найдены.")
+            return
+
+        print(f"\n🚨 {Style.BRIGHT}Найдено реальных угроз: {len(actual_findings)}{Style.NORMAL}")
+        
+        for finding in actual_findings:
+            confidence_level = self._get_confidence_level(finding.confidence)
+            conf_color, conf_text = self.CONFIDENCE_TEXT[confidence_level]
+            sev_color = self.SEVERITY_COLORS.get(finding.severity, Fore.WHITE)
+            rule = self.rules_map.get(finding.rule_id)
+
+            print(f"\n{Fore.WHITE}{'='*80}")
+            
+            # --- Основная информация ---
+            print(f"{Style.BRIGHT}Файл:        {Fore.CYAN}{finding.file_path}:{finding.line_number}")
+            if finding.commit:
+                print(f"{Style.BRIGHT}Коммит:      {Fore.MAGENTA}{finding.commit}")
+            print(f"{Style.BRIGHT}Правило:     {finding.rule_name} ({finding.rule_id})")
+            
+            # --- Детали находки ---
+            print(f"{Style.BRIGHT}Строка:      {Fore.WHITE}`{finding.line_content}`")
+            print(f"{Style.BRIGHT}Секрет:      {Fore.RED}{finding.secret}")
+            
+            # --- Оценка и метаданные ---
+            print(f"{Style.BRIGHT}Критичность: {sev_color}{finding.severity}")
+            print(f"{Style.BRIGHT}Уверенность:  {conf_color}{conf_text} (Оценка: {finding.confidence})")
+
+            # --- Рекомендации (если есть) ---
+            if rule and rule.description:
+                print(f"\n{Style.BRIGHT}Описание:{Style.NORMAL}\n  {rule.description}")
+            if rule and rule.remediation:
+                print(f"\n{Style.BRIGHT}Рекомендация по устранению:{Style.NORMAL}\n  {rule.remediation.replace(chr(10), ' ')}")
+            
+            print(f"{Fore.WHITE}{'='*80}")
+
+
+# ============================================================
+# FILE: scanner/reporters/html_reporter.py
+# ============================================================
+
+# secret-scanner/scanner/reporters/html_reporter.py
+
+import os
+from typing import List, Optional
+from jinja2 import Environment, FileSystemLoader
+
+# --- Контекст: Импортируем общие классы ---
+from .console_reporter import BaseReporter
+from ..core.finding import Finding
+from ..rules.rule_loader import Rule
+
+# --- Полная реализация HTMLReporter ---
+
+class HTMLReporter(BaseReporter):
+    """Генерирует наглядный отчет в формате HTML."""
+
+    def __init__(self, rules: List[Rule]):
+        super().__init__(rules)
+        
+        # Определяем путь к директории с шаблонами
+        # Путь: secret-scanner/scanner/reporters/ -> ../../web/templates
+        template_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'web', 'templates')
+        
+        if not os.path.isdir(template_dir):
+            raise FileNotFoundError(f"Директория с HTML-шаблонами не найдена: {template_dir}")
+            
+        # Настраиваем окружение Jinja2
+        self.jinja_env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
+
+    def generate_report(self, findings: List[Finding], output_file: Optional[str] = None):
+        """
+        Основной метод для генерации HTML-отчета.
+        """
+        if not output_file:
+            output_file = "secret_scan_report.html"
+            
+        try:
+            template = self.jinja_env.get_template('report.html')
+        except Exception as e:
+            print(f"Ошибка: Не удалось загрузить HTML-шаблон 'report.html': {e}")
+            return
+
+        # Добавляем полные данные о правилах к каждой находке для удобства в шаблоне
+        findings_with_rules = []
+        for f in findings:
+            rule = self.rules_map.get(f.rule_id)
+            findings_with_rules.append({
+                "finding": f,
+                "rule": rule
+            })
+
+        # Рендерим шаблон, передавая в него обработанные данные
+        html_content = template.render(
+            findings_with_rules=findings_with_rules,
+            title="Отчет о сканировании секретов"
+        )
+        
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            print(f"HTML отчет успешно сохранен в: {os.path.abspath(output_file)}")
+        except IOError as e:
+            print(f"Ошибка: Не удалось записать HTML отчет в файл {output_file}: {e}")
+
+
+# ============================================================
+# FILE: scanner/reporters/json_reporter.py
+# ============================================================
+
+# secret-scanner/scanner/reporters/json_reporter.py
+
+import json
+from typing import List, Dict, Any, Optional
+
+# --- Контекст: Импортируем общие классы ---
+from .console_reporter import BaseReporter 
+from ..core.finding import Finding
+from ..rules.rule_loader import Rule
+
+# --- Полная реализация JSONReporter ---
+
+class JSONReporter(BaseReporter):
+    """Генерирует подробный отчет в формате JSON."""
+
+    def __init__(self, rules: List[Rule]):
+        super().__init__(rules)
+
+    def _finding_to_dict(self, finding: Finding) -> Dict[str, Any]:
+        """Сериализует объект Finding в словарь для JSON."""
+        rule = self.rules_map.get(finding.rule_id)
+        
+        return {
+            "file_path": finding.file_path,
+            "line_number": finding.line_number,
+            "commit": finding.commit,
+            "confidence": finding.confidence,
+            "whitelisted": finding.whitelisted,
+            "secret": finding.secret,
+            "line_content": finding.line_content,
+            "rule": {
+                "id": finding.rule_id,
+                "name": finding.rule_name,
+                "severity": finding.severity,
+                "description": rule.description if rule else "N/A",
+                "remediation": rule.remediation if rule else "N/A",
+            }
+        }
+
+    def generate_report(self, findings: List[Finding], output_file: Optional[str] = None):
+        """
+        Основной метод для генерации JSON-отчета.
+        """
+        actual_findings_count = len([f for f in findings if not f.whitelisted])
+        
+        report = {
+            "summary": {
+                "total_findings": len(findings),
+                "whitelisted_findings": len(findings) - actual_findings_count,
+                "secrets_found": actual_findings_count,
+            },
+            "findings": [self._finding_to_dict(f) for f in findings]
+        }
+        
+        # Преобразуем в JSON с красивым форматированием
+        report_json = json.dumps(report, indent=2, ensure_ascii=False)
+        
+        if output_file:
+            try:
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(report_json)
+                print(f"JSON отчет успешно сохранен в: {os.path.abspath(output_file)}")
+            except IOError as e:
+                print(f"Ошибка: Не удалось записать JSON отчет в файл {output_file}: {e}")
+        else:
+            # Если файл не указан, выводим в консоль
+            print(report_json)
+
+
+# ============================================================
+# FILE: scanner/rules/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: scanner/rules/rule.py
+# ============================================================
+
+# secret-scanner/scanner/rules/rule.py
+from dataclasses import dataclass
+
+@dataclass
+class Rule:
+    id: str
+    name: str
+    pattern: str
+    severity: str
+    description: str
+    remediation: str
+
+# ============================================================
+# FILE: scanner/rules/rule_loader.py
+# ============================================================
+
+# secret-scanner/scanner/rules/rule_loader.py
+
+import yaml
+from typing import List
+from dataclasses import dataclass
+
+@dataclass
+class Rule:
+    """
+    Датакласс для представления одного правила сканирования.
+    Определяет, что и как искать.
+    """
+    id: str
+    name: str
+    pattern: str
+    severity: str
+    description: str
+    remediation: str
+
+class RuleLoader:
+    """
+    Отвечает за загрузку и валидацию правил сканирования из списка YAML-файлов.
+    """
+    def __init__(self, rule_paths: List[str]):
+        if not isinstance(rule_paths, list):
+            raise TypeError("rule_paths должен быть списком путей к файлам.")
+        self.rule_paths = rule_paths
+
+    def load_rules(self) -> List[Rule]:
+        """
+        Загружает правила из всех указанных YAML-файлов.
+        Пропускает файлы, которые не удалось найти или распарсить.
+        """
+        all_rules: List[Rule] = []
+        print(f"Загрузка правил из: {self.rule_paths}")
+
+        for path in self.rule_paths:
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                    
+                    if not data or 'rules' not in data:
+                        print(f"Предупреждение: В файле {path} отсутствует обязательный ключ 'rules'. Файл пропущен.")
+                        continue
+                    
+                    if not isinstance(data['rules'], list):
+                        print(f"Предупреждение: Ключ 'rules' в файле {path} должен содержать список. Файл пропущен.")
+                        continue
+
+                    for i, rule_data in enumerate(data['rules']):
+                        try:
+                            # Создаем объект Rule, передавая словарь с данными
+                            # Если в rule_data не хватает полей, dataclass вызовет TypeError
+                            rule = Rule(**rule_data)
+                            all_rules.append(rule)
+                        except TypeError as e:
+                            print(f"Предупреждение: Некорректный формат правила #{i+1} в файле {path}. {e}. Правило пропущено.")
+                        except Exception as e:
+                            print(f"Предупреждение: Неизвестная ошибка при обработке правила #{i+1} в {path}: {e}. Правило пропущено.")
+
+            except FileNotFoundError:
+                print(f"Ошибка: Файл с правилами не найден: {path}. Файл пропущен.")
+            except yaml.YAMLError as e:
+                print(f"Ошибка: Некорректный синтаксис YAML в файле {path}: {e}. Файл пропущен.")
+            except Exception as e:
+                print(f"Ошибка: Не удалось прочитать файл с правилами {path}: {e}. Файл пропущен.")
+        
+        print(f"Успешно загружено правил: {len(all_rules)}.")
+        return all_rules
+
+# ============================================================
+# FILE: scanner/whitelist/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: scanner/whitelist/whitelist_manager.py
+# ============================================================
+
+# secret-scanner/scanner/whitelist/whitelist_manager.py
+
+import os
+import hashlib
+import fnmatch
+from typing import List, Dict, Set
+from ..core.finding import Finding
+
+class WhitelistManager:
+    """
+    Управляет белым списком (.secretsignore).
+    Загружает правила при инициализации и фильтрует по ним находки.
+    """
+    def __init__(self, project_path: str):
+        self.ignore_file_path = os.path.join(project_path, '.secretsignore')
+        self.rules: Dict[str, Set[str]] = {
+            'path_pattern': set(),
+            'value_hash': set(),
+            'specific': set()
+        }
+        self._load_rules()
+
+    def _load_rules(self):
+        """
+        Загружает и парсит правила из файла .secretsignore.
+        Поддерживает комментарии и пустые строки.
+        """
+        if not os.path.exists(self.ignore_file_path):
+            return
+        
+        print(f"Загрузка правил из {self.ignore_file_path}...")
+        with open(self.ignore_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                try:
+                    # Пробуем новый формат "тип:значение"
+                    rule_type, value = line.split(':', 1)
+                    if rule_type in self.rules:
+                        self.rules[rule_type].add(value)
+                    else:
+                        # Если тип правила неизвестен, считаем это старым форматом
+                        self.rules['specific'].add(line)
+                except ValueError:
+                    # Если в строке нет ':', это старый формат (path:line:rule_id)
+                    self.rules['specific'].add(line)
+
+    def filter(self, findings: List[Finding]) -> List[Finding]:
+        """
+        Фильтрует список находок. Не удаляет их, а выставляет флаг `whitelisted = True`.
+        """
+        for finding in findings:
+            if self._is_whitelisted(finding):
+                finding.whitelisted = True
+        return findings
+
+    def _is_whitelisted(self, finding: Finding) -> bool:
+        """
+        Проверяет одну находку по всем загруженным правилам белого списка.
+        """
+        # 1. Проверка по полному совпадению (самый быстрый и специфичный)
+        # Формат: path/to/file.py:42:RULE_ID
+        specific_identifier = f"{finding.file_path}:{finding.line_number}:{finding.rule_id}"
+        if specific_identifier in self.rules['specific']:
+            return True
+            
+        # 2. Проверка по хешу значения секрета
+        # Это позволяет игнорировать тестовый ключ во всем проекте
+        if self.rules['value_hash']:
+            secret_hash = hashlib.sha256(finding.secret.encode()).hexdigest()
+            if secret_hash in self.rules['value_hash']:
+                return True
+        
+        # 3. Проверка по паттерну пути файла (самый широкий)
+        # Используем fnmatch для поддержки wildcards (*, ?)
+        for pattern in self.rules['path_pattern']:
+            if fnmatch.fnmatch(finding.file_path, pattern):
+                return True
+            
+        return False
+
+# ============================================================
+# FILE: tests/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: tests/test_engine.py
+# ============================================================
+
+# secret-scanner/tests/test_engine.py
+
+import os
+import pytest
+import yaml
+
+# Добавляем путь, чтобы импортировать модули сканера
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from scanner.core.engine import ScanEngine
+
+# --- Тестовое окружение ---
+
+# Содержимое тестового файла с Python-кодом
+TEST_PYTHON_CONTENT = """
+API_KEY_1 = "AKIAIOSFODNN7EXAMPLE" # AWS Key
+# Конкатенация
+SECRET_PART_1 = "ghp_1234567890"
+SECRET_PART_2 = "abcdefghijklmnopqrstuvwxyz"
+GITHUB_TOKEN = SECRET_PART_1 + SECRET_PART_2
+"""
+
+# Содержимое тестового .env файла
+TEST_ENV_CONTENT = "TELEGRAM_BOT_TOKEN=123456789:AAG_Abc123Def456Ghi789Jkl_mnoPQR"
+
+# Содержимое тестовых правил
+TEST_RULES_CONTENT = """
+rules:
+  - id: AWS_ACCESS_KEY
+    name: "AWS Access Key ID"
+    pattern: 'AKIA[0-9A-Z]{16}'
+    severity: CRITICAL
+    description: "Test desc"
+    remediation: "Test rem"
+  - id: GITHUB_TOKEN
+    name: "GitHub Token"
+    pattern: 'ghp_[a-zA-Z0-9]{36}'
+    severity: CRITICAL
+    description: "Test desc"
+    remediation: "Test rem"
+  - id: TELEGRAM_BOT_TOKEN
+    name: "Telegram Bot API Token"
+    pattern: '\\d{8,10}:AA[A-Za-z0-9_\\-]{33}'
+    severity: CRITICAL
+    description: "Test desc"
+    remediation: "Test rem"
+"""
+
+@pytest.fixture
+def test_project(tmp_path):
+    """
+    Pytest-фикстура для создания временной директории с тестовыми файлами.
+    """
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    
+    # Создаем файлы с секретами
+    (project_dir / "main.py").write_text(TEST_PYTHON_CONTENT)
+    (project_dir / ".env").write_text(TEST_ENV_CONTENT)
+    
+    # Создаем директорию с конфигами
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "test_rules.yaml").write_text(TEST_RULES_CONTENT)
+    
+    # Создаем settings.yaml
+    settings = {
+        'exclude_dirs': ['.git'],
+        'scan_extensions': ['.py', '.env']
+    }
+    (config_dir / "settings.yaml").write_text(yaml.dump(settings))
+    
+    return project_dir, config_dir
+
+# --- Тесты ---
+
+def test_scan_engine_finds_secrets(test_project):
+    """
+    Основной интеграционный тест: проверяет, что ScanEngine находит секреты
+    в разных типах файлов.
+    """
+    project_dir, config_dir = test_project
+    
+    # 1. Настраиваем конфигурацию для движка
+    with open(config_dir / "settings.yaml", 'r') as f:
+        config = yaml.safe_load(f)
+    config['rule_paths'] = [str(config_dir / "test_rules.yaml")]
+    
+    # 2. Инициализируем и запускаем движок
+    engine = ScanEngine(config)
+    findings = engine.run(str(project_dir), scan_git=False)
+    
+    # 3. Проверяем результаты
+    assert len(findings) == 3, "Должно быть найдено ровно 3 секрета"
+    
+    # Создаем словарь для удобного доступа к находкам по ID правила
+    findings_by_rule = {f.rule_id: f for f in findings}
+    
+    # Проверка находки в .py файле (простой случай)
+    assert 'AWS_ACCESS_KEY' in findings_by_rule
+    aws_finding = findings_by_rule['AWS_ACCESS_KEY']
+    assert aws_finding.secret == "AKIAIOSFODNN7EXAMPLE"
+    assert "main.py" in aws_finding.file_path
+    
+    # Проверка находки в .py файле (конкатенация)
+    # Важно: наш python_parser должен был склеить строку, но детектор работает построчно.
+    # Этот тест покажет, что RegexDetector находит токен в строке `GITHUB_TOKEN = ...`
+    # Продвинутый тест мог бы проверять токены из AST.
+    assert 'GITHUB_TOKEN' in findings_by_rule
+    gh_finding = findings_by_rule['GITHUB_TOKEN']
+    assert gh_finding.secret == "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+    
+    # Проверка находки в .env файле
+    assert 'TELEGRAM_BOT_TOKEN' in findings_by_rule
+    tg_finding = findings_by_rule['TELEGRAM_BOT_TOKEN']
+    assert tg_finding.secret == "123456789:AAG_Abc123Def456Ghi789Jkl_mnoPQR"
+    assert ".env" in tg_finding.file_path
+
+# ============================================================
+# FILE: web/__init__.py
+# ============================================================
+
+
+
+# ============================================================
+# FILE: web/app.py
+# ============================================================
+
+# secret-scanner/web/app.py
+
+import os
+import tempfile
+import shutil
+import yaml
+from typing import Dict, Any
+from flask import Flask, render_template, request, redirect, url_for, flash
+from werkzeug.utils import secure_filename
+
+# Добавляем путь к корневой директории, чтобы импортировать сканер
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from scanner.core.engine import ScanEngine
+from scanner.rules.rule_loader import RuleLoader
+
+# --- Инициализация приложения и сканера ---
+
+app = Flask(__name__)
+app.secret_key = 'super-secret-key-for-flask-flashes' # Ключ для flash-сообщений
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Ограничение размера загружаемого файла (16 MB)
+
+def get_scanner_engine() -> ScanEngine:
+    """Инициализирует и возвращает экземпляр движка сканера."""
+    config_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config'))
+    with open(os.path.join(config_dir, 'settings.yaml'), 'r', encoding='utf-8') as f:
+        config: Dict[str, Any] = yaml.safe_load(f)
+    
+    config['rule_paths'] = [
+        os.path.join(config_dir, 'default_rules.yaml'),
+        os.path.join(config_dir, 'ru_rules.yaml')
+    ]
+    return ScanEngine(config)
+
+# Создаем один экземпляр движка при старте приложения
+scanner_engine = get_scanner_engine()
+# Загружаем правила для передачи в HTML-шаблон
+rules = RuleLoader(scanner_engine.config['rule_paths']).load_rules()
+rules_map = {rule.id: rule for rule in rules}
+
+
+@app.route('/')
+def index():
+    """Отображает главную страницу с формой загрузки."""
+    return render_template('index.html')
+
+@app.route('/scan', methods=['POST'])
+def scan():
+    """Обрабатывает загрузку ZIP-архива, запускает сканирование и показывает отчет."""
+    if 'project_zip' not in request.files:
+        flash('Файл не был отправлен.', 'error')
+        return redirect(url_for('index'))
+    
+    file = request.files['project_zip']
+    if file.filename == '':
+        flash('Файл не выбран.', 'error')
+        return redirect(url_for('index'))
+
+    if file and file.filename.endswith('.zip'):
+        filename = secure_filename(file.filename)
+        temp_dir = tempfile.mkdtemp() # Создаем безопасную временную директорию
+        
+        try:
+            zip_path = os.path.join(temp_dir, filename)
+            file.save(zip_path)
+            
+            extract_dir = os.path.join(temp_dir, 'extracted_project')
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            # Распаковка архива
+            shutil.unpack_archive(zip_path, extract_dir)
+            
+            # Запуск сканирования на распакованной директории
+            # Для веб-версии отключаем сканирование Git по умолчанию для скорости
+            findings = scanner_engine.run(extract_dir, scan_git=False)
+            
+            # Добавляем полные данные о правилах к находкам для рендеринга в шаблоне
+            findings_with_rules = [
+                {"finding": f, "rule": rules_map.get(f.rule_id)} for f in findings
+            ]
+
+            return render_template(
+                'report.html', 
+                findings_with_rules=findings_with_rules,
+                title=f"Отчет для {filename}"
+            )
+        except Exception as e:
+            flash(f'Произошла ошибка при обработке файла: {e}', 'error')
+            return redirect(url_for('index'))
+        finally:
+            # Гарантированно удаляем временную директорию со всем содержимым
+            shutil.rmtree(temp_dir)
+
+    flash('Пожалуйста, загрузите корректный ZIP-архив.', 'error')
+    return redirect(url_for('index'))
+
+if __name__ == '__main__':
+    # Для локального запуска. В продакшене используется gunicorn или другой WSGI-сервер.
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
+/* ============================================================ */
+/* FILE: web/static/style.css */
+/* ============================================================ */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f4f7f9;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+.container {
+    max-width: 900px;
+    margin: 20px auto;
+    background-color: #fff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.07);
+}
+h1, h2 {
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+.finding {
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+.finding-header {
+    padding: 10px 15px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.finding-body {
+    padding: 15px;
+    background-color: #fdfdfd;
+    font-size: 14px;
+}
+.finding-body p { margin: 8px 0; }
+.finding-body code {
+    background-color: #eee;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+}
+.secret-value { color: #d9534f; font-weight: bold; }
+.line-content {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background-color: #f0f0f0;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+.severity-critical { border-left: 5px solid #d9534f; }
+.severity-critical .finding-header { background-color: #f2dede; color: #a94442; }
+.severity-high { border-left: 5px solid #f0ad4e; }
+.severity-high .finding-header { background-color: #fcf8e3; color: #8a6d3b; }
+.severity-medium { border-left: 5px solid #5bc0de; }
+.severity-medium .finding-header { background-color: #d9edf7; color: #31708f; }
+.severity-low { border-left: 5px solid #5cb85c; }
+.severity-low .finding-header { background-color: #dff0d8; color: #3c763d; }
+.severity-clean .finding-header { background-color: #dff0d8; color: #3c763d; }
+.whitelisted {
+    background-color: #f5f5f5;
+    padding: 10px 15px;
+    border-left: 5px solid #ccc;
+    color: #777;
+    font-size: 13px;
+}
+.back-link {
+    display: inline-block;
+    margin-top: 20px;
+    text-decoration: none;
+    color: #31708f;
+}
+.flash-error {
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #a94442;
+    background-color: #f2dede;
+    border-color: #ebccd1;
+}
+
+<!-- ============================================================ -->
+<!-- FILE: web/templates/index.html -->
+<!-- ============================================================ -->
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Secret Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Secret Scanner v2.0</h1>
+        <p>Загрузите ZIP-архив вашего проекта для сканирования на наличие секретов.</p>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flashes">
+            {% for category, message in messages %}
+              <div class="flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form action="/scan" method="post" enctype="multipart/form-data">
+            <input type="file" name="project_zip" accept=".zip" required>
+            <button type="submit">Сканировать</button>
+        </form>
+    </div>
+</body>
+</html>
+
+<!-- ============================================================ -->
+<!-- FILE: web/templates/report.html -->
+<!-- ============================================================ -->
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 {{ title }}</h1>
+        
+        {% set actual_findings = findings_with_rules|rejectattr('finding.whitelisted')|list %}
+        {% set whitelisted_findings = findings_with_rules|selectattr('finding.whitelisted')|list %}
+
+        <p>Найдено реальных угроз: <strong>{{ actual_findings|length }}</strong></p>
+        
+        {% if not actual_findings %}
+            <div class="finding severity-clean">
+                <div class="finding-header">
+                    <span class="severity">Чисто</span>
+                    <span class="rule-name">Потенциальные секреты не обнаружены</span>
+                </div>
+            </div>
+        {% endif %}
+
+        {% for item in actual_findings %}
+            <div class="finding severity-{{ item.finding.severity|lower }}">
+                <div class="finding-header">
+                    <span class="severity">{{ item.finding.severity }}</span>
+                    <span class="rule-name">{{ item.finding.rule_name }}</span>
+                </div>
+                <div class="finding-body">
+                    <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code></p>
+                    {% if item.finding.commit %}
+                    <p><strong>Коммит:</strong> <code>{{ item.finding.commit }}</code></p>
+                    {% endif %}
+                    <p><strong>Секрет:</strong> <code class="secret-value">{{ item.finding.secret }}</code></p>
+                    <p><strong>Строка кода:</strong></p>
+                    <pre class="line-content"><code>{{ item.finding.line_content }}</code></pre>
+                    <p><strong>Уверенность:</strong> {{ "%.2f"|format(item.finding.confidence) }}</p>
+                    {% if item.rule and item.rule.remediation %}
+                    <p><strong>Рекомендация:</strong> {{ item.rule.remediation }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+
+        {% if whitelisted_findings %}
+            <h2>Проигнорировано с помощью .secretsignore ({{ whitelisted_findings|length }})</h2>
+            {% for item in whitelisted_findings %}
+                <div class="finding whitelisted">
+                     <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code> | <strong>Правило:</strong> {{ item.finding.rule_id }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="back-link">← Сканировать другой проект</a>
+    </div>
+</body>
+</html>
+

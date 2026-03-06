@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 {{ title }}</h1>
+        
+        {% set actual_findings = findings_with_rules|rejectattr('finding.whitelisted')|list %}
+        {% set whitelisted_findings = findings_with_rules|selectattr('finding.whitelisted')|list %}
+
+        <p>Найдено реальных угроз: <strong>{{ actual_findings|length }}</strong></p>
+        
+        {% if not actual_findings %}
+            <div class="finding severity-clean">
+                <div class="finding-header">
+                    <span class="severity">Чисто</span>
+                    <span class="rule-name">Потенциальные секреты не обнаружены</span>
+                </div>
+            </div>
+        {% endif %}
+
+        {% for item in actual_findings %}
+            <div class="finding severity-{{ item.finding.severity|lower }}">
+                <div class="finding-header">
+                    <span class="severity">{{ item.finding.severity }}</span>
+                    <span class="rule-name">{{ item.finding.rule_name }}</span>
+                </div>
+                <div class="finding-body">
+                    <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code></p>
+                    {% if item.finding.commit %}
+                    <p><strong>Коммит:</strong> <code>{{ item.finding.commit }}</code></p>
+                    {% endif %}
+                    <p><strong>Секрет:</strong> <code class="secret-value">{{ item.finding.secret }}</code></p>
+                    <p><strong>Строка кода:</strong></p>
+                    <pre class="line-content"><code>{{ item.finding.line_content }}</code></pre>
+                    <p><strong>Уверенность:</strong> {{ "%.2f"|format(item.finding.confidence) }}</p>
+                    {% if item.rule and item.rule.remediation %}
+                    <p><strong>Рекомендация:</strong> {{ item.rule.remediation }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+
+        {% if whitelisted_findings %}
+            <h2>Проигнорировано с помощью .secretsignore ({{ whitelisted_findings|length }})</h2>
+            {% for item in whitelisted_findings %}
+                <div class="finding whitelisted">
+                     <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code> | <strong>Правило:</strong> {{ item.finding.rule_id }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="back-link">← Сканировать другой проект</a>
+    </div>
+</body>
+</html>

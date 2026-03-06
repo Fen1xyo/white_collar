@@ -1,0 +1,39 @@
+# Байт-код Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Виртуальное окружение
+venv/
+.venv/
+env/
+.env
+
+# Локальные файлы IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Файлы зависимостей (для некоторых менеджеров пакетов)
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+bin/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+
+# Файлы отчетов и загрузок
+scan_report.html
+*.json
+uploads/
+instance/
+
+# Локальные файлы тестов
+.pytest_cache/
+.coverage

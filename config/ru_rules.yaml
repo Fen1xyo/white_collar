@@ -1,0 +1,40 @@
+rules:
+  - id: YANDEX_CLOUD_IAM_TOKEN
+    name: "Yandex Cloud IAM Token"
+    pattern: 't1\.[A-Za-z0-9_\\-]{150,}'
+    severity: CRITICAL
+    description: "Обнаружен Yandex Cloud IAM-токен. Это короткоживущий токен для аутентификации в Yandex Cloud."
+    remediation: >
+      IAM-токены живут максимум 12 часов. Если токен старше — возможно, он уже истёк, но его следует отозвать. Используйте сервисный аккаунт и авторизованные ключи для долгоживущих процессов.
+
+  - id: YANDEX_CLOUD_API_KEY
+    name: "Yandex Cloud API Key"
+    pattern: '(AQVN|AQVJ)[A-Za-z0-9_\\-]{35,}'
+    severity: CRITICAL
+    description: "Обнаружен статический API-ключ сервисного аккаунта Yandex Cloud."
+    remediation: >
+      Немедленно отзовите ключ в консоли Yandex Cloud: IAM → Сервисные аккаунты → [ваш аккаунт] → API-ключи. Создайте новый и передавайте через переменную окружения или секрет в Yandex Lockbox.
+
+  - id: VK_API_TOKEN
+    name: "VK API Access Token"
+    pattern: 'vk1\.a\.[A-Za-z0-9_\\-]{80,}'
+    severity: HIGH
+    description: "Обнаружен токен доступа VK API. Может использоваться для выполнения действий от имени пользователя или сообщества."
+    remediation: >
+      Отзовите токен через VK ID → Безопасность. Для серверных приложений используйте сервисный ключ (service_token), а не пользовательский.
+
+  - id: TELEGRAM_BOT_TOKEN
+    name: "Telegram Bot API Token"
+    pattern: '\d{8,10}:AA[A-Za-z0-9_\\-]{33}'
+    severity: CRITICAL
+    description: "Обнаружен токен Telegram Bot API. Позволяет полностью контролировать бота."
+    remediation: >
+      Немедленно отзовите токен командой /revoke у @BotFather. Передавайте токен через переменную окружения.
+
+  - id: BITRIX_WEBHOOK
+    name: "1C-Bitrix Webhook URL"
+    pattern: 'https://[a-zA-Z0-9\\-.]+\.bitrix24\.ru/rest/\d+/([a-z0-9]{32,})'
+    severity: HIGH
+    description: "Обнаружен URL входящего вебхука 1C-Bitrix24 с токеном. Позволяет отправлять данные в ваш портал Bitrix24."
+    remediation: >
+      Удалите вебхук в настройках портала Bitrix24 (Разработчикам → Входящие webhook). Создайте новый и передавайте его URL через переменную окружения.
