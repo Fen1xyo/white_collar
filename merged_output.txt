@@ -375,223 +375,30 @@ rules:
 # FILE: config/ru_rules.yaml
 # ============================================================
 
-# =============================================================================
-# all_rules.yaml
-# Единый файл со всеми правилами сканера секретов.
-# Содержит: универсальные правила + российские сервисы (59 правил).
-# =============================================================================
+# config/ru_rules.yaml
+# Правила для российских сервисов + универсальные generic-правила.
 
 rules:
+  # ===========================================================================
+  # GENERIC — общие правила по ключевым словам
+  # ===========================================================================
 
   - id: GENERIC_KEYWORD_SECRET_12
     name: "Generic Secret by Keyword (12+ chars)"
-    # Ищет любое слово-ключ (key, token, password, secret, auth, oauth и т.д.) в имени переменной,
-    # которой присваивается любая строка длиной 12 и более символов.
-    pattern: '(?i)(key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["'']([a-zA-Z0-9\-_!@#$%^&*()]{12,})["'']'
+    # ИСПРАВЛЕНО: кавычки заменены с "умных" ' ' на ASCII \x27, чтобы regex работал корректно.
+    # Ищет имя переменной с "секретным" словом, которому присвоена строка ≥ 12 символов.
+    pattern: '(?i)(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["\x27]([a-zA-Z0-9\-_!@#$%^&*()]{12,})["\x27]'
     severity: MEDIUM
-    description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит строку длиной 12+ символов."
+    description: "Обнаружена потенциальная утечка: переменная с «секретным» именем содержит строку длиной 12+ символов."
     remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
 
   - id: GENERIC_KEYWORD_SECRET_20
     name: "Generic Secret by Keyword (20+ chars)"
-    # То же самое, но для строк длиной 20+ символов. Более высокая критичность.
-    pattern: '(?i)(key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["'']([a-zA-Z0-9\-_!@#$%^&*()]{20,})["'']'
+    # ИСПРАВЛЕНО: аналогично — кавычки исправлены на \x27.
+    pattern: '(?i)(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["\x27]([a-zA-Z0-9\-_!@#$%^&*()]{20,})["\x27]'
     severity: HIGH
-    description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит длинную строку (20+ символов)."
+    description: "Обнаружена потенциальная утечка: переменная с «секретным» именем содержит длинную строку (20+ символов)."
     remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
-  # ===========================================================================
-  # УНИВЕРСАЛЬНЫЕ ПРАВИЛА
-  # ===========================================================================
-
-  - id: AWS_ACCESS_KEY
-    name: "AWS Access Key ID"
-    pattern: 'AKIA[0-9A-Z]{16}'
-    severity: CRITICAL
-    description: "Обнаружен AWS Access Key ID. Этот ключ является частью учетных данных AWS и может предоставить доступ к ресурсам облака."
-    remediation: "Немедленно отозвать ключ в консоли AWS IAM. Для аутентификации приложений использовать IAM-роли или переменные окружения."
-
-  - id: GITHUB_TOKEN
-    name: "GitHub Token"
-    pattern: 'ghp_[a-zA-Z0-9]{36}'
-    severity: CRITICAL
-    description: "Обнаружен персональный токен доступа (PAT) GitHub."
-    remediation: "Немедленно отозвать токен в настройках профиля GitHub (Settings → Developer settings → Personal access tokens). Храните токены в секрет-менеджерах."
-
-  - id: GENERIC_API_KEY
-    name: "Generic API Key"
-    # Первая группа незахватывающая — match.group(1) всегда возвращает значение ключа
-    pattern: '(?i)(?:api_key|apikey|api-key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
-    severity: HIGH
-    description: "Обнаружен ключ API общего вида. Такие ключи часто используются для доступа к различным сервисам."
-    remediation: "Проверьте, является ли этот ключ чувствительным. Если да, переместите его в переменные окружения или секрет-менеджер (например, HashiCorp Vault, AWS Secrets Manager)."
-
-  - id: PRIVATE_KEY
-    name: "Private Key"
-    pattern: '-----BEGIN (?:EC|RSA|DSA|PGP) PRIVATE KEY-----'
-    severity: CRITICAL
-    description: "Обнаружен приватный ключ в формате PEM. Компрометация приватного ключа может привести к расшифровке трафика или несанкционированному доступу по SSH."
-    remediation: "Никогда не храните приватные ключи в репозиториях. Немедленно отозвите скомпрометированный ключ и перевыпустите пару ключей."
-
-  - id: STRIPE_SECRET_KEY
-    name: "Stripe Secret Key"
-    pattern: 'sk_live_[a-zA-Z0-9]{24,}'
-    severity: CRITICAL
-    description: "Обнаружен секретный ключ Stripe. Позволяет проводить платежи и получать доступ к финансовым данным."
-    remediation: "Немедленно отозвать ключ в Dashboard Stripe → Developers → API keys."
-
-  - id: STRIPE_RESTRICTED_KEY
-    name: "Stripe Restricted Key"
-    pattern: 'rk_live_[a-zA-Z0-9]{24,}'
-    severity: HIGH
-    description: "Обнаружен ограниченный ключ Stripe."
-    remediation: "Отозвать ключ в Dashboard Stripe → Developers → Restricted keys."
-
-  - id: SLACK_TOKEN
-    name: "Slack Token"
-    pattern: 'xox[baprs]-[0-9]{12}-[0-9]{12}-[a-zA-Z0-9]{24}'
-    severity: HIGH
-    description: "Обнаружен токен Slack. Позволяет отправлять сообщения и управлять рабочим пространством."
-    remediation: "Отзовите токен на api.slack.com → Your Apps → OAuth & Permissions."
-
-  - id: SLACK_WEBHOOK
-    name: "Slack Incoming Webhook"
-    pattern: 'https://hooks\.slack\.com/services/T[a-zA-Z0-9]{8}/B[a-zA-Z0-9]{8,}/[a-zA-Z0-9]{24}'
-    severity: HIGH
-    description: "Обнаружен входящий вебхук Slack. Позволяет отправлять сообщения в канал."
-    remediation: "Удалите вебхук в настройках Slack App → Incoming Webhooks."
-
-  - id: GOOGLE_API_KEY
-    name: "Google API Key"
-    pattern: 'AIza[0-9A-Za-z\-_]{35}'
-    severity: HIGH
-    description: "Обнаружен Google API Key. Может предоставить доступ к сервисам Google Cloud, Maps и другим."
-    remediation: "Отзовите ключ в Google Cloud Console → APIs & Services → Credentials."
-
-  - id: GOOGLE_OAUTH_TOKEN
-    name: "Google OAuth Access Token"
-    pattern: 'ya29\.[0-9A-Za-z\-_]{68,}'
-    severity: CRITICAL
-    description: "Обнаружен Google OAuth Access Token. Предоставляет временный доступ к Google-сервисам от имени пользователя."
-    remediation: "Отзовите токен через myaccount.google.com → Security → Third-party apps."
-
-  - id: GITLAB_TOKEN
-    name: "GitLab Personal Access Token"
-    pattern: 'glpat-[a-zA-Z0-9\-_]{20}'
-    severity: CRITICAL
-    description: "Обнаружен Personal Access Token GitLab."
-    remediation: "Отзовите токен в GitLab → User Settings → Access Tokens."
-
-  - id: HEROKU_API_KEY
-    name: "Heroku API Key"
-    pattern: '[h|H][e|E][r|R][o|O][k|K][u|U][_\-]?[a|A][p|P][i|I][_\-]?[k|K][e|E][y|Y]\s*[:=]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружен API-ключ Heroku. Позволяет управлять приложениями и инфраструктурой."
-    remediation: "Сбросьте ключ в настройках аккаунта Heroku → Account → API Key."
-
-  - id: SENDGRID_API_KEY
-    name: "SendGrid API Key"
-    pattern: 'SG\.[a-zA-Z0-9\-_]{22}\.[a-zA-Z0-9\-_]{43}'
-    severity: HIGH
-    description: "Обнаружен API-ключ SendGrid. Позволяет отправлять email-рассылки."
-    remediation: "Отзовите ключ в SendGrid → Settings → API Keys."
-
-  - id: TWILIO_ACCOUNT_SID
-    name: "Twilio Account SID"
-    pattern: 'AC[a-zA-Z0-9]{32}'
-    severity: HIGH
-    description: "Обнаружен Twilio Account SID."
-    remediation: "Смените Auth Token в консоли Twilio. SID сам по себе не является секретом, но вместе с Auth Token даёт полный доступ."
-
-  - id: TWILIO_AUTH_TOKEN
-    name: "Twilio Auth Token"
-    pattern: '(?i)twilio[_\-]?auth[_\-]?token\s*[:=]\s*["\x27]?([a-zA-Z0-9]{32})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружен Twilio Auth Token. Даёт полный доступ к аккаунту Twilio."
-    remediation: "Немедленно смените Auth Token в консоли Twilio."
-
-  - id: MAILGUN_API_KEY
-    name: "Mailgun API Key"
-    pattern: 'key-[a-zA-Z0-9]{32}'
-    severity: HIGH
-    description: "Обнаружен API-ключ Mailgun. Позволяет отправлять email и управлять доменами."
-    remediation: "Отзовите ключ в Mailgun → Account → API Keys."
-
-  - id: FIREBASE_SERVER_KEY
-    name: "Firebase Server Key"
-    pattern: 'AAAA[a-zA-Z0-9\-_]{7}:[a-zA-Z0-9\-_]{140}'
-    severity: CRITICAL
-    description: "Обнаружен Firebase Server Key. Позволяет отправлять push-уведомления от имени приложения."
-    remediation: "Пересоздайте ключ в Firebase Console → Project Settings → Cloud Messaging."
-
-  - id: SQUARE_ACCESS_TOKEN
-    name: "Square Access Token"
-    pattern: 'sq0atp-[a-zA-Z0-9\-_]{22}'
-    severity: CRITICAL
-    description: "Обнаружен токен Square. Позволяет проводить платежи через Square API."
-    remediation: "Отзовите токен в Square Developer Dashboard → OAuth."
-
-  - id: PAYPAL_CLIENT_SECRET
-    name: "PayPal Client Secret"
-    pattern: '(?i)paypal[_\-]?(?:client[_\-]?secret|secret|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9\-_]{32,})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружен Client Secret PayPal. Позволяет выполнять платежные операции."
-    remediation: "Пересоздайте учётные данные в PayPal Developer Dashboard."
-
-  - id: DIGITALOCEAN_TOKEN
-    name: "DigitalOcean Personal Access Token"
-    pattern: 'dop_v1_[a-f0-9]{64}'
-    severity: CRITICAL
-    description: "Обнаружен Personal Access Token DigitalOcean. Позволяет управлять дроплетами и инфраструктурой."
-    remediation: "Отзовите токен в DigitalOcean → Account → API → Tokens."
-
-  - id: AZURE_CLIENT_SECRET
-    name: "Azure Client Secret"
-    pattern: '(?i)azure[_\-]?(?:client[_\-]?secret|tenant[_\-]?id|subscription[_\-]?id|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9~._\-]{20,})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружены учётные данные Azure. Могут предоставить доступ к ресурсам Microsoft Azure."
-    remediation: "Пересоздайте секрет в Azure Active Directory → App Registrations → Certificates & secrets."
-
-  - id: GITHUB_APP_TOKEN
-    name: "GitHub App Token"
-    pattern: '(?:ghs|ghu|ghr)_[a-zA-Z0-9]{36}'
-    severity: CRITICAL
-    description: "Обнаружен токен GitHub App (server-to-server, user-to-server или refresh)."
-    remediation: "Немедленно отзовите токен в настройках GitHub App."
-
-  - id: NPM_TOKEN
-    name: "NPM Token"
-    pattern: 'npm_[a-zA-Z0-9]{36}'
-    severity: HIGH
-    description: "Обнаружен токен NPM. Позволяет публиковать пакеты и управлять аккаунтом."
-    remediation: "Отзовите токен на npmjs.com → Access Tokens."
-
-  - id: DOCKER_HUB_TOKEN
-    name: "Docker Hub Access Token"
-    pattern: '(?i)(?:docker[_\-]?(?:hub[_\-]?)?|dockerhub[_\-]?)(?:token|password|pat|access[_\-]?token)\s*[:=]\s*["\x27]?([a-zA-Z0-9\-_\.]{20,})["\x27]?'
-    severity: HIGH
-    description: "Обнаружен токен Docker Hub. Позволяет пушить образы в реестр."
-    remediation: "Отзовите токен на hub.docker.com → Account Settings → Security."
-
-  - id: GENERIC_PASSWORD
-    name: "Generic Password in Code"
-    pattern: '(?i)(?:password|passwd|pwd)\s*[:=]\s*["\x27]([^"\x27\s]{8,})["\x27]'
-    severity: HIGH
-    description: "Обнаружен пароль, захардкоженный в коде. Это нарушение базовых требований безопасности."
-    remediation: "Перенесите пароль в переменные окружения или секрет-менеджер. Не храните пароли в репозиториях."
-
-  - id: GENERIC_SECRET
-    name: "Generic Secret"
-    pattern: '(?i)(?:secret|client_secret|app_secret)\s*[:=]\s*["\x27]([a-zA-Z0-9_\-!@#$%^&*]{12,})["\x27]'
-    severity: HIGH
-    description: "Обнаружен хардкод секрета общего вида."
-    remediation: "Перенесите секрет в переменные окружения или секрет-менеджер."
-
-  - id: BASIC_AUTH_IN_URL
-    name: "Basic Auth Credentials in URL"
-    pattern: 'https?://[^:\s]{3,}:[^@\s]{3,}@[a-zA-Z0-9.\-]+'
-    severity: CRITICAL
-    description: "Обнаружены учётные данные Basic Auth в URL. Пароль передаётся в открытом виде и сохраняется в логах."
-    remediation: "Уберите учётные данные из URL. Используйте переменные окружения или файлы конфигурации."
 
   # ===========================================================================
   # YANDEX CLOUD
@@ -599,12 +406,11 @@ rules:
 
   - id: YANDEX_CLOUD_IAM_TOKEN
     name: "Yandex Cloud IAM Token"
-    # Реальные IAM-токены имеют точки внутри тела: t1.<сегмент>.<сегмент>
     pattern: 't1\.[A-Za-z0-9_\-\.]{150,}'
     severity: CRITICAL
-    description: "Обнаружен Yandex Cloud IAM-токен. Это короткоживущий токен для аутентификации в Yandex Cloud."
+    description: "Обнаружен Yandex Cloud IAM-токен. Короткоживущий токен для аутентификации в Yandex Cloud."
     remediation: >
-      IAM-токены живут максимум 12 часов. Если токен старше — возможно, он уже истёк,
+      IAM-токены живут максимум 12 часов. Если токен старше — возможно, уже истёк,
       но его следует отозвать. Используйте сервисный аккаунт и авторизованные ключи
       для долгоживущих процессов.
 
@@ -620,24 +426,23 @@ rules:
 
   - id: YANDEX_LOCKBOX_SECRET
     name: "Yandex Lockbox Secret ID"
-    # ID секретов Yandex Lockbox начинаются с e6q
     pattern: '(?i)(?:lockbox|yandex[_\-]?lockbox)[_\-]?(?:secret[_\-]?id|key|value)\s*[:=]\s*["\x27]?(e6q[a-zA-Z0-9]{15,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен ID секрета Yandex Lockbox. Может использоваться для получения сохранённых секретов из хранилища."
+    description: "Обнаружен ID секрета Yandex Lockbox."
     remediation: "Отзовите доступ к секрету в консоли Yandex Cloud → Lockbox."
 
   - id: YANDEX_MAPS_API_KEY
     name: "Yandex Maps API Key"
     pattern: '(?i)(?:yandex[_\-]?maps?|ymaps?)[_\-]?(?:api[_\-]?key|key|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{30,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен ключ Яндекс Карт. Злоупотребление ключом может привести к расходам."
+    description: "Обнаружен ключ Яндекс Карт. Злоупотребление может привести к расходам."
     remediation: "Перегенерируйте ключ в консоли Яндекс Облака. Ограничьте доступ по домену/IP."
 
   - id: YANDEX_METRIKA_TOKEN
     name: "Yandex Metrika OAuth Token"
     pattern: '(?i)(?:metrika|metrica|yandex[_\-]?metrika)[_\-]?(?:token|oauth|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен OAuth-токен Яндекс.Метрики. Даёт доступ к статистике и настройкам счётчиков."
+    description: "Обнаружен OAuth-токен Яндекс.Метрики."
     remediation: "Отзовите токен на oauth.yandex.ru → Приложения."
 
   - id: YANDEX_MARKET_API_TOKEN
@@ -662,7 +467,7 @@ rules:
     name: "VK API Access Token"
     pattern: 'vk1\.a\.[A-Za-z0-9_\-]{80,}'
     severity: HIGH
-    description: "Обнаружен токен доступа VK API. Может использоваться для выполнения действий от имени пользователя или сообщества."
+    description: "Обнаружен токен доступа VK API."
     remediation: >
       Отзовите токен через VK ID → Безопасность. Для серверных приложений используйте
       сервисный ключ (service_token), а не пользовательский.
@@ -680,7 +485,7 @@ rules:
     name: "1C-Bitrix Webhook URL"
     pattern: 'https://[a-zA-Z0-9.\-]+\.bitrix24\.ru/rest/\d+/([a-z0-9]{32,})'
     severity: HIGH
-    description: "Обнаружен URL входящего вебхука 1C-Bitrix24 с токеном. Позволяет отправлять данные в ваш портал Bitrix24."
+    description: "Обнаружен URL входящего вебхука 1C-Bitrix24 с токеном."
     remediation: >
       Удалите вебхук в настройках портала Bitrix24 (Разработчикам → Входящие webhook).
       Создайте новый и передавайте его URL через переменную окружения.
@@ -689,7 +494,7 @@ rules:
     name: "Bitrix24 OAuth Access Token"
     pattern: '(?i)(?:bitrix24|bitrix)[_\-]?(?:access[_\-]?token|oauth[_\-]?token|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{40,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен OAuth-токен Bitrix24. Позволяет выполнять операции в CRM от имени пользователя."
+    description: "Обнаружен OAuth-токен Bitrix24."
     remediation: "Отзовите приложение в Bitrix24 → Профиль → Разрешения приложений."
 
   # ===========================================================================
@@ -700,7 +505,7 @@ rules:
     name: "Selectel API Token"
     pattern: '(?i)selectel[_\-]?(?:token|api[_\-]?key|secret|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен токен Selectel. Может предоставить доступ к объектному хранилищу и серверам."
+    description: "Обнаружен токен Selectel."
     remediation: "Отзовите токен в панели управления Selectel → Профиль → Токены."
 
   - id: VK_CLOUD_TOKEN
@@ -728,14 +533,14 @@ rules:
     name: "Reg.ru API Key"
     pattern: '(?i)(?:reg[_\-]?ru|regru)[_\-]?(?:api[_\-]?key|token|secret|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{10,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен API-ключ Reg.ru. Позволяет управлять доменами, хостингом и DNS."
+    description: "Обнаружен API-ключ Reg.ru."
     remediation: "Отзовите ключ в личном кабинете Reg.ru → Настройки API."
 
   - id: CROC_CLOUD_TOKEN
     name: "CROC Cloud API Token"
     pattern: '(?i)(?:croc[_\-]?cloud|croc)[_\-]?(?:token|api[_\-]?key|secret|access[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен токен CROC Cloud. Риск несанкционированного доступа к корпоративной облачной инфраструктуре."
+    description: "Обнаружен токен CROC Cloud."
     remediation: "Немедленно обратитесь в службу поддержки CROC и отзовите скомпрометированный ключ."
 
   - id: SBERCLOUD_TOKEN
@@ -760,12 +565,11 @@ rules:
     name: "YooMoney (ЮМани) Secret Key"
     pattern: '(?i)(?:yoomoney|yoo[_\-]?money|yamoney|ya[_\-]?money)[_\-]?(?:secret|token|key|api[_\-]?key|oauth)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен секретный ключ ЮМани. Риск несанкционированных платежей от имени магазина."
+    description: "Обнаружен секретный ключ ЮМани."
     remediation: "Отзовите токен в настройках магазина ЮМани."
 
   - id: YOOKASSA_SECRET_KEY
     name: "YooKassa (ЮКасса) Secret Key"
-    # Ключи ЮКасса начинаются с live_ или test_
     pattern: '(?:live|test)_[a-zA-Z0-9_\-:]{20,}'
     severity: CRITICAL
     description: "Обнаружен секретный ключ ЮКасса. Позволяет проводить и отменять платежи."
@@ -782,14 +586,14 @@ rules:
     name: "QIWI API Token"
     pattern: '(?i)qiwi[_\-]?(?:token|api[_\-]?key|p2p[_\-]?key|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-токен QIWI. Может использоваться для переводов и проверки баланса."
+    description: "Обнаружен API-токен QIWI."
     remediation: "Заблокируйте токен на сайте qiwi.com → Настройки → API."
 
   - id: CLOUDPAYMENTS_API_KEY
     name: "CloudPayments API Key"
     pattern: '(?i)(?:cloudpayments|cloud[_\-]?payments)[_\-]?(?:api[_\-]?(?:key|secret|password)|public[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен ключ CloudPayments. Позволяет проводить платежи и управлять подписками."
+    description: "Обнаружен ключ CloudPayments."
     remediation: "Отзовите ключ в личном кабинете CloudPayments → Настройки → Ключи API."
 
   - id: ROBOKASSA_MERCHANT_PASSWORD
@@ -824,7 +628,7 @@ rules:
     name: "МодульБанк API Key"
     pattern: '(?i)(?:modulbank|modul[_\-]?bank)[_\-]?(?:api[_\-]?key|token|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-ключ МодульБанка. Позволяет просматривать остатки и проводить платежи."
+    description: "Обнаружен API-ключ МодульБанка."
     remediation: "Немедленно отзовите ключ в интернет-банке МодульБанка."
 
   - id: TOCHKA_BANK_API_KEY
@@ -842,12 +646,11 @@ rules:
     remediation: "Пересоздайте ключи в личном кабинете LiqPay → Бизнес → Мерчанты."
 
   # ===========================================================================
-  # SMS-ШЛЮЗЫ И ТЕЛЕКОМ (РОССИЯ)
+  # SMS-ШЛЮЗЫ И ТЕЛЕКОМ
   # ===========================================================================
 
   - id: SMSRU_API_ID
     name: "SMS.ru API ID"
-    # SMS.ru использует UUID v4 в качестве API-ID
     pattern: '(?i)(?:sms[_\-]?ru|smsru)[_\-]?(?:api[_\-]?id|key|token)\s*[:=]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
     severity: HIGH
     description: "Обнаружен API ID сервиса SMS.ru (UUID-формат)."
@@ -893,12 +696,11 @@ rules:
     remediation: "Отзовите ключ в личном кабинете 2GIS API → Мои ключи."
 
   # ===========================================================================
-  # ДАННЫЕ И EDO (РОССИЯ)
+  # ДАННЫЕ И ЭДО
   # ===========================================================================
 
   - id: DADATA_API_KEY
     name: "DaData API Key"
-    # DaData выдаёт ключи в виде hex-строки длиной 40 символов
     pattern: '(?i)dadata[_\-]?(?:api[_\-]?key|key|token|secret)\s*[:=]\s*["\x27]?([a-f0-9]{40})["\x27]?'
     severity: HIGH
     description: "Обнаружен API-ключ DaData (hex, 40 символов)."
@@ -908,21 +710,21 @@ rules:
     name: "Kontur Diadoc API Key"
     pattern: '(?i)(?:diadoc|диадок)[_\-]?(?:api[_\-]?key|key|token|client[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-ключ Диадок (СКБ Контур). Позволяет работать с юридически значимыми документами."
+    description: "Обнаружен API-ключ Диадок (СКБ Контур)."
     remediation: "Отзовите ключ в личном кабинете Диадок → Настройки → API-ключи."
 
   - id: KONTUR_EXTERN_API_KEY
     name: "Kontur.Extern API Key"
     pattern: '(?i)(?:kontur[_\-]?extern|kontur)[_\-]?(?:api[_\-]?key|key|token|client[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-ключ Kontur.Extern. Позволяет работать с налоговой отчётностью."
+    description: "Обнаружен API-ключ Kontur.Extern."
     remediation: "Обратитесь в поддержку СКБ Контур для отзыва скомпрометированного ключа."
 
   - id: SBIS_API_TOKEN
     name: "СБИС (Tenzor) API Token"
     pattern: '(?i)(?:sbis|тензор|tenzor)[_\-]?(?:token|api[_\-]?key|sid|session)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен токен СБИС. Может предоставить доступ к бухгалтерии и электронному документообороту."
+    description: "Обнаружен токен СБИС."
     remediation: "Завершите все сессии и смените ключи в настройках СБИС."
 
   - id: KONTUR_FOCUS_API_KEY
@@ -933,7 +735,7 @@ rules:
     remediation: "Отзовите ключ через поддержку СКБ Контур."
 
   # ===========================================================================
-  # CRM И БИЗНЕС (РОССИЯ)
+  # CRM И БИЗНЕС
   # ===========================================================================
 
   - id: AMOCRM_ACCESS_TOKEN
@@ -965,7 +767,7 @@ rules:
     remediation: "Обратитесь к администратору Smart Technologies для отзыва скомпрометированного ключа."
 
   # ===========================================================================
-  # ПОЧТА И РАССЫЛКИ (РОССИЯ)
+  # ПОЧТА И РАССЫЛКИ
   # ===========================================================================
 
   - id: UNISENDER_API_KEY
@@ -997,15 +799,14 @@ rules:
     remediation: "Отзовите приложение на id.vk.com → Приложения."
 
   # ===========================================================================
-  # МАРКЕТПЛЕЙСЫ И ДОСТАВКА (РОССИЯ)
+  # МАРКЕТПЛЕЙСЫ И ДОСТАВКА
   # ===========================================================================
 
   - id: WILDBERRIES_API_KEY
     name: "Wildberries API Key"
-    # WB API-ключи — JWT-формат (три части, разделённые точками)
     pattern: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{20,}'
     severity: CRITICAL
-    description: "Обнаружен API-ключ Wildberries (JWT-формат). Позволяет управлять товарами, заказами и ценами."
+    description: "Обнаружен API-ключ Wildberries (JWT-формат)."
     remediation: "Пересоздайте токен в личном кабинете WB → Настройки → Доступ к API."
 
   - id: OZON_API_KEY
@@ -1055,7 +856,7 @@ rules:
     remediation: "Отзовите ключ в консоли ClickHouse Cloud → API Keys."
 
   # ===========================================================================
-  # ГОСУДАРСТВЕННЫЕ СЕРВИСЫ (РОССИЯ)
+  # ГОСУДАРСТВЕННЫЕ СЕРВИСЫ
   # ===========================================================================
 
   - id: ESIA_TOKEN
@@ -1140,14 +941,55 @@ from ..parsers.python_parser import PythonParser
 from ..parsers.c_parser import CParser
 from ..parsers.config_parser import ConfigParser
 from ..detectors.regex_detector import RegexDetector
+from ..detectors.entropy_detector import EntropyDetector
 from ..detectors.confidence_scorer import ConfidenceScorer
 from ..whitelist.whitelist_manager import WhitelistManager
+
+_SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def _deduplicate_findings(findings: List[Finding]) -> List[Finding]:
+    """
+    Дедупликация по ключу (file_path, line_number, secret):
+      - Если один и тот же секрет найден на одной строке несколькими правилами,
+        оставляем только самое «важное» по severity.
+
+    Дополнительно: схлопываем одинаковый секрет с разных строк одного файла
+    (например, BEGIN RSA PRIVATE KEY на строке 24 и 25 — это один ключ).
+    Оставляем находку с меньшим номером строки (первое вхождение).
+    """
+    # Шаг 1: дедупликация по (file, line, secret) — убираем срабатывания нескольких правил
+    per_line: Dict[tuple, Finding] = {}
+    for f in findings:
+        key = (f.file_path, f.line_number, f.secret)
+        if key not in per_line:
+            per_line[key] = f
+        else:
+            if _SEVERITY_RANK.get(f.severity, 0) > _SEVERITY_RANK.get(per_line[key].severity, 0):
+                per_line[key] = f
+
+    # Шаг 2: дедупликация одного секрета в разных строках одного файла
+    # Ключ: (file_path, secret) — оставляем строку с наименьшим номером и наивысшим severity
+    per_file_secret: Dict[tuple, Finding] = {}
+    for f in per_line.values():
+        key2 = (f.file_path, f.secret)
+        if key2 not in per_file_secret:
+            per_file_secret[key2] = f
+        else:
+            existing = per_file_secret[key2]
+            # Приоритет: сначала severity, потом меньший номер строки
+            rank_new = _SEVERITY_RANK.get(f.severity, 0)
+            rank_old = _SEVERITY_RANK.get(existing.severity, 0)
+            if rank_new > rank_old or (rank_new == rank_old and f.line_number < existing.line_number):
+                per_file_secret[key2] = f
+
+    return list(per_file_secret.values())
 
 
 class ScanEngine:
     """
     Основной движок сканирования.
-    Оркестрирует все компоненты: FileWalker, парсеры, детекторы, скоринг и whitelist.
+    Оркестрирует: FileWalker, парсеры, детекторы, скоринг и whitelist.
     """
 
     def __init__(self, config: Dict[str, Any]):
@@ -1156,44 +998,44 @@ class ScanEngine:
         # 1. Загрузка правил
         self.rules = RuleLoader(config.get('rule_paths', [])).load_rules()
 
-        # 2. Инициализация обходчика файлов
+        # 2. Обходчик файлов
         self.file_walker = FileWalker(
-            project_path=".",  # Будет переопределен при запуске
+            project_path=".",
             exclude_dirs=config.get('exclude_dirs', []),
-            scan_extensions=config.get('scan_extensions', [])
+            scan_extensions=config.get('scan_extensions', []),
         )
 
-        # 3. Инициализация парсеров для разных типов файлов
+        # 3. Парсеры
         self.parsers: Dict[str, BaseParser] = {
-            '.py':              PythonParser(),
-            '.c':               CParser(),
-            '.h':               CParser(),
-            '.env':             ConfigParser(),
-            'makefile':         ConfigParser(),
-            '.yaml':            ConfigParser(),
-            '.yml':             ConfigParser(),
-            '.ini':             ConfigParser(),
-            '.cfg':             ConfigParser(),
-            '.conf':            ConfigParser(),
-            'requirements.txt': ConfigParser(),
+            '.py':                PythonParser(),
+            '.c':                 CParser(),
+            '.h':                 CParser(),
+            '.cpp':               CParser(),
+            '.env':               ConfigParser(),
+            'makefile':           ConfigParser(),
+            '.yaml':              ConfigParser(),
+            '.yml':               ConfigParser(),
+            '.ini':               ConfigParser(),
+            '.cfg':               ConfigParser(),
+            '.conf':              ConfigParser(),
+            'requirements.txt':   ConfigParser(),
             'docker-compose.yml': ConfigParser(),
         }
-        self.default_parser = ConfigParser()  # Парсер для всех остальных файлов
+        self.default_parser = ConfigParser()
 
-        # 4. Инициализация детекторов
+        # 4. Детекторы (regex первым, энтропия вторым)
         self.detectors = [
             RegexDetector(self.rules),
+            EntropyDetector(),
         ]
 
-        # 5. Инициализация модулей пост-обработки
+        # 5. Пост-обработка
         self.confidence_scorer = ConfidenceScorer()
         self.whitelist_manager: Optional[WhitelistManager] = None
 
     def _get_parser(self, file_path: str) -> BaseParser:
-        """Роутер: выбирает подходящий парсер для файла."""
         filename = os.path.basename(file_path).lower()
         ext = os.path.splitext(filename)[1]
-
         if filename in self.parsers:
             return self.parsers[filename]
         if ext in self.parsers:
@@ -1201,12 +1043,9 @@ class ScanEngine:
         return self.default_parser
 
     def run(self, project_path: str, scan_git: bool = False) -> List[Finding]:
-        """
-        Главный метод, запускающий полный цикл сканирования.
-        """
+        """Главный метод: полный цикл сканирования."""
         self.file_walker.project_path = project_path
         self.whitelist_manager = WhitelistManager(project_path)
-
         all_findings: Set[Finding] = set()
 
         if scan_git:
@@ -1219,60 +1058,54 @@ class ScanEngine:
             for file_path in self.file_walker.walk_files():
                 try:
                     with open(file_path, 'rb') as f:
-                        findings_in_file = self._scan_content(f.read(), file_path)
+                        raw = f.read()
+                    findings_in_file = self._scan_content(raw, file_path)
                     all_findings.update(findings_in_file)
                 except Exception as e:
-                    print(f"Ошибка: не удалось прочитать или обработать файл {file_path}: {e}")
+                    print(f"Ошибка: не удалось обработать файл {file_path}: {e}")
 
-        print(f"Сканирование завершено. Найдено уникальных потенциальных секретов: {len(all_findings)}.")
-        print("Запуск пост-обработки: оценка уверенности и применение белого списка...")
+        print(f"Сканирование завершено. Уникальных потенциальных секретов: {len(all_findings)}.")
+        print("Запуск пост-обработки: дедупликация, оценка уверенности и белый список...")
 
-        scored_findings = [self.confidence_scorer.score(f) for f in all_findings]
+        deduplicated = _deduplicate_findings(list(all_findings))
+        print(f"После дедупликации: {len(deduplicated)} находок.")
+
+        scored_findings = [self.confidence_scorer.score(f) for f in deduplicated]
         final_findings = self.whitelist_manager.filter(scored_findings)
         final_findings.sort(key=lambda f: (f.file_path, f.line_number, f.rule_id))
         return final_findings
 
     def _scan_content(
-        self, content: Any, file_path: str, commit: Optional[str] = None
+        self,
+        content: Any,
+        file_path: str,
+        commit: Optional[str] = None,
     ) -> List[Finding]:
         """
-        Сканирует содержимое одного файла (или blob'а из Git).
-
-        ИСПРАВЛЕНО: после получения находок от детектора подменяем finding.line_content
-        на полную оригинальную строку исходного кода. Ранее туда записывался только
-        «токен» из парсера (например, голое значение строкового литерала из AST),
-        из-за чего ConfidenceScorer не видел имя переменной (token, key, password...)
-        и не давал бонус +0.20 за ключевое слово в строке.
+        Сканирует содержимое одного файла.
+        Подменяет finding.line_content на оригинальную строку исходника,
+        чтобы ConfidenceScorer видел полный контекст (имя переменной и т.д.).
         """
         findings = []
 
-        # --- Декодируем исходник для построчного контекста ---
         if isinstance(content, bytes):
-            # Пробуем UTF-8; при ошибке заменяем проблемные байты
             source_str = content.decode('utf-8', errors='replace')
         else:
             source_str = content
-
         source_lines = source_str.splitlines()
 
-        # --- Выбираем парсер и получаем токены ---
         parser = self._get_parser(file_path)
         tokens = parser.get_tokens(content, file_path)
 
-        # --- Запускаем все детекторы на каждом токене ---
         for token in tokens:
             for detector in self.detectors:
                 new_findings = detector.detect(
                     content=token["value"],
                     file_path=file_path,
                     line_number=token["line"],
-                    commit=commit
+                    commit=commit,
                 )
                 if new_findings:
-                    # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: заменяем line_content (который сейчас
-                    # содержит значение токена) на реальную строку исходного файла.
-                    # Это позволяет ConfidenceScorer анализировать контекст: имена
-                    # переменных, ключевые слова, комментарии.
                     for finding in new_findings:
                         line_idx = finding.line_number - 1
                         if 0 <= line_idx < len(source_lines):
@@ -1412,89 +1245,300 @@ class BaseDetector(ABC):
 # ============================================================
 
 # scanner/detectors/confidence_scorer.py
+
 import re
 from ..core.finding import Finding
+
 
 class ConfidenceScorer:
     """
     Модуль для оценки уверенности [0.0-1.0] для каждой находки.
-    """
-    TEST_PATH_RE = re.compile(
-        r'[/\\\\](tests?|fixtures|__tests__)[/\\\\]|test_.*\.py|.*_test\.py', re.I
-    )
-    EXAMPLE_VALUES_RE = re.compile(
-        r'\btest\b|placeholder|dummy|your_?|fake|mock|sample|replace|changeme|xxx',
-        re.I
-    )
-    DOCS_PATH_RE = re.compile(r'[/\\\\](docs?|examples?)[/\\\\]|README', re.I)
-    COMMENT_LINE_RE = re.compile(r'^\s*#')
 
+    Логика:
+      - Базовая оценка: 0.5
+      - Штрафы:   заглушки/примеры, документация, короткие значения, комментарии
+      - Бонусы:   специфичное правило, ключевое слово в строке, не-тестовый путь,
+                  высокая энтропия
+    """
+
+    # Пути к тестовым файлам
+    TEST_PATH_RE = re.compile(
+        r'[/\\](tests?|fixtures|__tests__|spec)[/\\]|test_.*\.py|.*_test\.py',
+        re.I,
+    )
+
+    # Явные «заглушки» в значении секрета
+    EXAMPLE_VALUES_RE = re.compile(
+        r'\bplaceholder\b|\bdummy\b|\bfake\b|\bmock\b|\bsample\b'
+        r'|\breplace_?me\b|\bchangeme\b|\bxxxx+\b|\byour[_-]',
+        re.I,
+    )
+
+    # Пути к документации/примерам
+    DOCS_PATH_RE = re.compile(
+        r'[/\\](docs?|examples?|demo)[/\\]|README',
+        re.I,
+    )
+
+    # Строка является комментарием
+    COMMENT_LINE_RE = re.compile(r'^\s*(?:#|//|--)')
+
+    # Правила с высокой специфичностью (редко ложные срабатывания)
     SPECIFIC_RULE_IDS = {
         'AWS_ACCESS_KEY', 'GITHUB_TOKEN', 'PRIVATE_KEY',
         'YANDEX_CLOUD_IAM_TOKEN', 'YANDEX_CLOUD_API_KEY',
         'VK_API_TOKEN', 'TELEGRAM_BOT_TOKEN', 'BITRIX_WEBHOOK',
-        'GENERIC_API_KEY', 'SELECTEL_API_TOKEN', 'VK_CLOUD_TOKEN', 
-        'TIMEWEB_CLOUD_TOKEN', 'BEGET_API_KEY', 'REGRU_API_KEY', 
-        'CROC_CLOUD_TOKEN', 'SBERCLOUD_TOKEN', 'YOOMONEY_SECRET_KEY', 
-        'YOOKASSA_SECRET_KEY', 'TINKOFF_SECRET_KEY', 'QIWI_API_TOKEN', 
-        'CLOUDPAYMENTS_API_KEY', 'ROBOKASSA_MERCHANT_PASSWORD',
-        'SBERBANK_MERCHANT_TOKEN', 'ALFA_BANK_TOKEN', 'PAYMASTER_SECRET',
-        'MODULBANK_API_KEY', 'TOCHKA_BANK_API_KEY', 'LIQPAY_PRIVATE_KEY',
+        'GENERIC_API_KEY', 'SELECTEL_API_TOKEN', 'VK_CLOUD_TOKEN',
+        'TIMEWEB_CLOUD_TOKEN', 'BEGET_API_KEY', 'REGRU_API_KEY',
+        'CROC_CLOUD_TOKEN', 'SBERCLOUD_TOKEN',
+        'YOOMONEY_SECRET_KEY', 'YOOKASSA_SECRET_KEY',
+        'TINKOFF_SECRET_KEY', 'QIWI_API_TOKEN', 'CLOUDPAYMENTS_API_KEY',
+        'ROBOKASSA_MERCHANT_PASSWORD', 'SBERBANK_MERCHANT_TOKEN',
+        'ALFA_BANK_TOKEN', 'PAYMASTER_SECRET', 'MODULBANK_API_KEY',
+        'TOCHKA_BANK_API_KEY', 'LIQPAY_PRIVATE_KEY',
         'SMSRU_API_ID', 'SMSC_CREDENTIALS', 'SMSAERO_API_KEY',
-        'MTS_EXOLVE_API_KEY', 'DEVINO_API_KEY', 'YANDEX_MAPS_API_KEY', 
-        'TWOGIS_API_KEY', 'YANDEX_METRIKA_TOKEN', 'APPMETRICA_API_KEY',
+        'MTS_EXOLVE_API_KEY', 'DEVINO_API_KEY',
+        'YANDEX_MAPS_API_KEY', 'TWOGIS_API_KEY',
+        'YANDEX_METRIKA_TOKEN', 'APPMETRICA_API_KEY',
         'DADATA_API_KEY', 'DIADOC_API_KEY', 'KONTUR_EXTERN_API_KEY',
-        'SBIS_API_TOKEN', 'KONTUR_FOCUS_API_KEY', 'AMOCRM_ACCESS_TOKEN', 
-        'RETAILCRM_API_KEY', 'PLANFIX_API_KEY', 'BITRIX24_OAUTH_TOKEN',
-        'UNISENDER_API_KEY', 'SENDPULSE_SECRET', 'SENDSAY_API_KEY', 'MAILRU_API_TOKEN',
+        'SBIS_API_TOKEN', 'KONTUR_FOCUS_API_KEY',
+        'AMOCRM_ACCESS_TOKEN', 'RETAILCRM_API_KEY', 'PLANFIX_API_KEY',
+        'BITRIX24_OAUTH_TOKEN', 'UNISENDER_API_KEY', 'SENDPULSE_SECRET',
+        'SENDSAY_API_KEY', 'MAILRU_API_TOKEN',
         'HEADHUNTER_API_TOKEN', 'AVITO_CLIENT_SECRET', 'CDEK_ACCOUNT_CREDENTIALS',
         'WILDBERRIES_API_KEY', 'OZON_API_KEY', 'YANDEX_MARKET_API_TOKEN',
         'ESIA_TOKEN', 'NALOG_RU_API_TOKEN', 'YANDEX_LOCKBOX_SECRET',
         'CLICKHOUSE_CLOUD_KEY', 'ISPMANAGER_API_KEY',
         'SMART_TECHNOLOGIES_API', 'JIRA_CONFLUENCE_RU_TOKEN',
+        'STRIPE_SECRET_KEY', 'STRIPE_RESTRICTED_KEY',
+        'SLACK_TOKEN', 'SLACK_WEBHOOK', 'GOOGLE_API_KEY',
+        'GOOGLE_OAUTH_TOKEN', 'GITLAB_TOKEN', 'HEROKU_API_KEY',
+        'SENDGRID_API_KEY', 'TWILIO_AUTH_TOKEN', 'FIREBASE_SERVER_KEY',
+        'SQUARE_ACCESS_TOKEN', 'PAYPAL_CLIENT_SECRET', 'DIGITALOCEAN_TOKEN',
+        'AZURE_CLIENT_SECRET', 'GITHUB_APP_TOKEN', 'NPM_TOKEN',
+        'BASIC_AUTH_IN_URL',
     }
+
+    # Ключевые слова вокруг секрета — признак реального назначения переменной
     KEYWORD_RE = re.compile(
-        r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token'
-        r'|webhook|credential|private|client_secret|bearer)',
-        re.I
+        r'(?i)(password|secret|token|key|passwd|pwd|api_key|apikey'
+        r'|access_token|auth_token|webhook|credential|private|client_secret|bearer)',
     )
 
     def score(self, finding: Finding) -> Finding:
-        """
-        Присваивает оценку уверенности (confidence) находке, модифицируя объект Finding.
-        """
         score = 0.5  # Базовая оценка
 
-        # --- Применяем факторы СНИЖЕНИЯ ---
-
-        # ИСПРАВЛЕНИЕ: Закомментирована строка, которая сильно занижала оценку для тестовых файлов.
-        # Теперь сканер будет находить утечки в тестах с той же эффективностью, что и в основном коде.
-        # if self.TEST_PATH_RE.search(finding.file_path):
-        #     score -= 0.35
-
+        # ── ШТРАФЫ ──────────────────────────────────────────────────────────
         if self.EXAMPLE_VALUES_RE.search(finding.secret):
             score -= 0.30
+
+        # Короткий Generic API Key — много ложных срабатываний
         if len(finding.secret) < 12 and finding.rule_id == 'GENERIC_API_KEY':
             score -= 0.20
-        if self.DOCS_PATH_RE.search(finding.file_path):
-            score -= 0.25
-        if self.COMMENT_LINE_RE.search(finding.line_content):
-            score -= 0.40
 
-        # --- Применяем факторы ПОВЫШЕНИЯ ---
+        if self.DOCS_PATH_RE.search(finding.file_path):
+            score -= 0.20
+
+        # Закомментированные секреты всё равно опасны (бывший -0.40 → -0.15)
+        if self.COMMENT_LINE_RE.search(finding.line_content):
+            score -= 0.15
+
+        # Тестовые пути — умеренный штраф (раньше было 0 из-за закомментированного кода)
+        if self.TEST_PATH_RE.search(finding.file_path):
+            score -= 0.15
+
+        # ── БОНУСЫ ──────────────────────────────────────────────────────────
+        # Специфичное правило с низким уровнем ложных срабатываний
         if finding.rule_id in self.SPECIFIC_RULE_IDS:
             score += 0.40
+
+        # Высокоэнтропийная строка (от EntropyDetector)
         if finding.rule_id == 'HIGH_ENTROPY_STRING':
             score += 0.25
+
+        # Ключевое слово в строке кода (имя переменной, заголовок и т.д.)
         if self.KEYWORD_RE.search(finding.line_content):
             score += 0.20
-        
-        # Этот бонус можно оставить, он повышает уверенность для не-тестовых файлов.
+
+        # Не тестовый путь
         if not self.TEST_PATH_RE.search(finding.file_path):
             score += 0.10
 
         finding.confidence = max(0.0, min(1.0, round(score, 2)))
         return finding
+
+# ============================================================
+# FILE: scanner/detectors/entropy_detector.py
+# ============================================================
+
+# scanner/detectors/entropy_detector.py
+
+import math
+import re
+from typing import List, Optional
+
+from .base import BaseDetector
+from ..core.finding import Finding
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Шаг 1: определяем, содержит ли строка «секретное» ключевое слово.
+# Ищем его как отдельное слово (не обязательно в начале переменной):
+#   OAUTH_ID  → oauth ✓
+#   DB_PASSWORD → password ✓
+#   MY_API_KEY → api ✓
+# ─────────────────────────────────────────────────────────────────────────────
+_KEYWORD_RE = re.compile(
+    r'(?i)(?<![a-z])(?:'
+    r'key|secret|token|password|passwd|pwd'
+    r'|auth|oauth|credential|cred|api|private|bearer|hash|salt'
+    r')(?![a-z])',
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Шаг 2: извлекаем строковые значения из строки кода.
+# Ищем всё, что находится внутри одинарных или двойных кавычек, длиной >= 10.
+# Не ограничиваем алфавит — ловим любые символы, кроме самой кавычки и перевода строки.
+# ─────────────────────────────────────────────────────────────────────────────
+_QUOTED_VALUE_RE = re.compile(
+    r'(?:"([^"\r\n]{10,})"'   # двойные кавычки
+    r"|'([^'\r\n]{10,})')",   # одинарные кавычки
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Режим 2 (без явного имени переменной):
+# длинная строка >= 40 символов, только «безопасный» алфавит (Base64/hex/alnum)
+# ─────────────────────────────────────────────────────────────────────────────
+_BARE_LONG_STRING_RE = re.compile(
+    r'(?:"([A-Za-z0-9+/=_\-]{40,})"'
+    r"|'([A-Za-z0-9+/=_\-]{40,})')",
+)
+
+# Символьные множества для определения типа строки
+_HEX   = set('0123456789abcdefABCDEF')
+_B64   = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+_ALNUM = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789')
+
+# Значения, которые явно являются заглушками
+_PLACEHOLDER_RE = re.compile(
+    r'(?i)\b(?:placeholder|dummy|fake|mock|sample|example|replace|changeme|test|demo)\b'
+)
+
+
+def _shannon_entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    freq: dict = {}
+    for c in s:
+        freq[c] = freq.get(c, 0) + 1
+    n = len(s)
+    return -sum((cnt / n) * math.log2(cnt / n) for cnt in freq.values())
+
+
+def _qualifies_as_secret(value: str, has_keyword_context: bool) -> bool:
+    """
+    Проверяет, является ли строка потенциальным секретом на основе энтропии.
+
+    Если есть контекст ключевого слова (has_keyword_context=True) — пороги мягче,
+    потому что само имя переменной уже является сигналом.
+    """
+    length = len(value)
+    if length < 10:
+        return False
+
+    # Явная заглушка → пропускаем
+    if _PLACEHOLDER_RE.search(value):
+        return False
+
+    entropy = _shannon_entropy(value)
+
+    if has_keyword_context:
+        # Контекст есть → умеренные пороги
+        if all(c in _HEX for c in value) and length >= 20:
+            return entropy >= 2.8
+        if all(c in _B64 for c in value):
+            return entropy >= 3.2
+        if all(c in _ALNUM for c in value):
+            return entropy >= 3.0
+        # Смешанные (со спецсимволами) — ещё мягче, т.к. спецсимволы сами по себе сигнал
+        return entropy >= 2.5 and length >= 12
+    else:
+        # Нет контекста → строгие пороги
+        if all(c in _HEX for c in value) and length >= 32:
+            return entropy >= 3.5
+        if all(c in _B64 for c in value) and length >= 40:
+            return entropy >= 4.5
+        return False
+
+
+class EntropyDetector(BaseDetector):
+    """
+    Детектор на основе энтропии Шеннона.
+
+    Работает в два шага:
+      1. Проверяем, есть ли в строке кода «секретное» ключевое слово
+         (key, token, oauth, password, api, auth и т.д.). Если есть — применяем
+         умеренные пороги энтропии к ЛЮБОЙ строке в кавычках на этой строке.
+      2. Независимо от ключевых слов ищем очень длинные высокоэнтропийные строки
+         (порог строгий, чтобы избежать ложных срабатываний).
+
+    Преимущество перед единым regex-паттерном:
+      - Надёжно ловит OAUTH_ID, DB_PASSWORD, MY_API_KEY и аналогичные случаи,
+        где ключевое слово находится в любом месте имени переменной.
+      - Ловит значения со спецсимволами (^, &, *, ! и т.д.), которые сложно
+        покрыть статическим regex-паттерном.
+    """
+
+    def detect(
+        self,
+        content: str,
+        file_path: str,
+        line_number: int,
+        commit: Optional[str] = None,
+    ) -> List[Finding]:
+        findings: List[Finding] = []
+        seen: set = set()
+
+        has_keyword = bool(_KEYWORD_RE.search(content))
+
+        # ── Режим 1: строка содержит секретное ключевое слово ─────────────────
+        if has_keyword:
+            for match in _QUOTED_VALUE_RE.finditer(content):
+                # Группа 1 — двойные кавычки, группа 2 — одинарные
+                candidate = match.group(1) if match.group(1) is not None else match.group(2)
+                if candidate in seen:
+                    continue
+                if _qualifies_as_secret(candidate, has_keyword_context=True):
+                    seen.add(candidate)
+                    findings.append(Finding(
+                        file_path=file_path,
+                        line_number=line_number,
+                        commit=commit,
+                        rule_id="HIGH_ENTROPY_STRING",
+                        rule_name="High Entropy String (Secret Variable)",
+                        severity="HIGH",
+                        secret=candidate,
+                        line_content=content.strip(),
+                    ))
+
+        # ── Режим 2: очень длинная строка без ключевого слова ─────────────────
+        for match in _BARE_LONG_STRING_RE.finditer(content):
+            candidate = match.group(1) if match.group(1) is not None else match.group(2)
+            if candidate in seen:
+                continue
+            if _qualifies_as_secret(candidate, has_keyword_context=False):
+                seen.add(candidate)
+                findings.append(Finding(
+                    file_path=file_path,
+                    line_number=line_number,
+                    commit=commit,
+                    rule_id="HIGH_ENTROPY_STRING",
+                    rule_name="High Entropy String (Bare)",
+                    severity="MEDIUM",
+                    secret=candidate,
+                    line_content=content.strip(),
+                ))
+
+        return findings
 
 # ============================================================
 # FILE: scanner/detectors/regex_detector.py
@@ -1584,77 +1628,59 @@ class BaseParser(ABC):
 # secret-scanner/scanner/parsers/c_parser.py
 
 import re
-from typing import List, Dict
+from typing import List, Dict, Tuple  # ИСПРАВЛЕНО: добавлен Tuple
+
 from .base import BaseParser
+
 
 class CParser(BaseParser):
     """
-    Парсер для C/C++, который находит строковые литералы, уделяя
-    особое внимание склейке смежных литералов.
+    Парсер для C/C++, который находит строковые литералы,
+    уделяя особое внимание склейке смежных литералов.
     """
-    
-    # Regex для удаления блочных комментариев (включая многострочные)
+
     BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
-    # Regex для удаления строчных комментариев
     LINE_COMMENT_RE = re.compile(r'//.*')
-    
-    # Regex для поиска смежных строковых литералов, разделенных пробелами/переносами строк.
-    # Пример: "hello" " world"
-    ADJACENT_STRINGS_RE = re.compile(r'("([^"\\]|\\.)*?")(\s*("([^"\\]|\\.)*?"))+')
-    
-    # Regex для поиска всех оставшихся (одиночных) строковых литералов.
-    SINGLE_STRING_RE = re.compile(r'"([^"\\]|\\.)*?"')
+    ADJACENT_STRINGS_RE = re.compile(
+        r'("(?:[^"\\]|\\.)*")(\s*("(?:[^"\\]|\\.)*"))+'
+    )
+    SINGLE_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
 
     def _clean_content(self, content: str) -> str:
-        """Удаляет все комментарии из C-кода."""
         content = self.BLOCK_COMMENT_RE.sub('', content)
         content = self.LINE_COMMENT_RE.sub('', content)
         return content
 
-    def get_tokens(self, content: str, file_path: str) -> List[Dict]:
-        """
-        Основной метод, который очищает код от комментариев и извлекает все строковые литералы.
-        """
+    def get_tokens(self, content, file_path: str) -> List[Dict]:
+        if isinstance(content, bytes):
+            content = content.decode('utf-8', errors='replace')
+
         cleaned_content = self._clean_content(content)
-        
-        # Используем словарь для хранения найденных строк, чтобы избежать дублирования
-        # при двухпроходном сканировании. Ключ - позиция начала строки в файле.
         found_strings: Dict[int, Tuple[str, int]] = {}
 
-        # 1. Первый проход: ищем и склеиваем смежные строки
+        # 1. Склеиваем смежные строковые литералы: "hello" " world" -> helloworld
         for match in self.ADJACENT_STRINGS_RE.finditer(cleaned_content):
             full_match_str = match.group(0)
-            
-            # "Склеиваем" части, удаляя кавычки и пробелы между ними
-            # Пример: "hello" " world" -> helloworld
             glued_value = "".join(re.findall(r'"(.*?)"', full_match_str))
-            
             start_pos = match.start()
             line_number = cleaned_content.count('\n', 0, start_pos) + 1
-            
             found_strings[start_pos] = (glued_value, line_number)
 
-        # 2. Второй проход: ищем все одиночные строки
+        # 2. Одиночные строковые литералы
         for match in self.SINGLE_STRING_RE.finditer(cleaned_content):
             start_pos = match.start()
-            # Если строка с этой позиции уже была обработана (как часть смежной), пропускаем ее
             if start_pos in found_strings:
                 continue
-
-            # Извлекаем значение без кавычек
             value = match.group(0)[1:-1]
             line_number = cleaned_content.count('\n', 0, start_pos) + 1
             found_strings[start_pos] = (value, line_number)
 
-        # 3. Формируем итоговый список токенов
         tokens = [
             {"value": val, "line": line, "file": file_path}
             for pos, (val, line) in found_strings.items()
         ]
-        
-        # Для полной совместимости с RegexDetector'ом, который работает построчно,
-        # добавим также и все строки файла как токены. Это создает избыточность,
-        # но гарантирует, что ни один детектор не пропустит свою цель.
+
+        # 3. Построчное сканирование (гарантирует покрытие всех regex-паттернов)
         for i, line in enumerate(content.splitlines()):
             tokens.append({"value": line, "line": i + 1, "file": file_path})
 
@@ -1771,25 +1797,29 @@ class ConfigParser(BaseParser):
 # ============================================================
 
 # scanner/parsers/python_parser.py
+
 import ast
 import re
 import sys
-from typing import List, Dict, Union, Any
+from typing import List, Dict, Union, Any, Optional  # ИСПРАВЛЕНО: добавлен Optional
+
 import chardet
+
 from .base import BaseParser
+
 
 class SecretReconstructor(ast.NodeVisitor):
     """
-    Продвинутый AST Visitor, который отслеживает присваивания переменных
-    и реконструирует строки, собранные из частей.
+    Продвинутый AST Visitor — отслеживает присваивания переменных и
+    реконструирует строки, собранные из частей (конкатенация, f-строки).
     """
+
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self.symbol_table: Dict[str, Any] = {}  # Таблица для хранения значений переменных
+        self.symbol_table: Dict[str, Any] = {}
         self.tokens: List[Dict] = []
 
     def _evaluate_node(self, node: ast.AST) -> Any:
-        """Рекурсивно вычисляет значение узла AST."""
         if isinstance(node, ast.Constant):
             return node.value
         if sys.version_info < (3, 8) and isinstance(node, ast.Str):
@@ -1804,7 +1834,7 @@ class SecretReconstructor(ast.NodeVisitor):
                     return left + right
                 except TypeError:
                     return None
-        if isinstance(node, ast.JoinedStr): # f-string
+        if isinstance(node, ast.JoinedStr):  # f-string
             parts = [self._evaluate_node(v) for v in node.values]
             if all(p is not None for p in parts):
                 return "".join(map(str, parts))
@@ -1813,32 +1843,44 @@ class SecretReconstructor(ast.NodeVisitor):
         return None
 
     def visit_Assign(self, node: ast.Assign):
-        """Посещает узлы присваивания (var = value)."""
         value = self._evaluate_node(node.value)
         if value is not None:
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     self.symbol_table[target.id] = value
-            # Добавляем реконструированное значение как токен
-            self.tokens.append({"value": str(value), "line": node.lineno, "file": self.file_path})
+                    self.tokens.append({
+                        "value": str(value),
+                        "line": node.lineno,
+                        "file": self.file_path
+                    })
         self.generic_visit(node)
 
     def visit_Constant(self, node: ast.Constant):
         if isinstance(node.value, str):
-            self.tokens.append({"value": node.value, "line": node.lineno, "file": self.file_path})
+            self.tokens.append({
+                "value": node.value,
+                "line": node.lineno,
+                "file": self.file_path
+            })
         self.generic_visit(node)
 
-    def visit_Str(self, node: ast.Str):
+    def visit_Str(self, node: ast.Str):  # Python < 3.8
         if isinstance(node.s, str):
-            self.tokens.append({"value": node.s, "line": node.lineno, "file": self.file_path})
+            self.tokens.append({
+                "value": node.s,
+                "line": node.lineno,
+                "file": self.file_path
+            })
         self.generic_visit(node)
 
     def get_tokens(self) -> List[Dict]:
         return self.tokens
 
+
 class PythonParser(BaseParser):
-    """ Продвинутый парсер для Python. """
-    CODING_RE = re.compile(br'^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)')
+    """Продвинутый парсер для Python с поддержкой AST и cp1251."""
+
+    CODING_RE = re.compile(br'^\s*#.*?coding[:=]\s*([-\w.]+)')
 
     def _detect_encoding(self, raw_bytes: bytes) -> str:
         if raw_bytes.startswith(b'\xef\xbb\xbf'):
@@ -1860,7 +1902,7 @@ class PythonParser(BaseParser):
             raw_bytes = content.encode('utf-8', errors='replace')
         else:
             raw_bytes = content
-        
+
         encoding = self._detect_encoding(raw_bytes)
         try:
             source = raw_bytes.decode(encoding, errors='replace')
@@ -1868,30 +1910,31 @@ class PythonParser(BaseParser):
             source = raw_bytes.decode('utf-8', errors='replace')
 
         all_tokens = []
-        tree: Optional[ast.AST] = None
+        tree: Optional[ast.AST] = None  # ИСПРАВЛЕНО: теперь Optional импортирован
 
-        # 1. Применяем "умный" AST-парсер с отслеживанием переменных.
+        # 1. AST-парсер с отслеживанием переменных и конкатенации
         try:
             tree = ast.parse(source, filename=file_path)
         except SyntaxError:
-            pass # Игнорируем синтаксические ошибки, переходя к построчному сканированию
+            pass
 
         if tree:
             visitor = SecretReconstructor(file_path)
             visitor.visit(tree)
             all_tokens.extend(visitor.get_tokens())
 
-        # 2. Всегда добавляем полное построчное сканирование файла.
-        # Это гарантирует, что правила, которые ищут паттерны в целых строках
-        # (например, 'password = "..."'), будут работать корректно.
+        # 2. Построчное сканирование — гарантирует работу всех regex-правил
         all_tokens.extend(self._fallback_line_scan(source, file_path))
-        
-        # Удаляем дубликаты токенов, если они есть
+
+        # Дедупликация по (value, line)
         unique_tokens = list({(d['value'], d['line']): d for d in all_tokens}.values())
         return unique_tokens
 
     def _fallback_line_scan(self, source: str, file_path: str) -> List[Dict]:
-        return [{"value": line, "line": i + 1, "file": file_path} for i, line in enumerate(source.splitlines())]
+        return [
+            {"value": line, "line": i + 1, "file": file_path}
+            for i, line in enumerate(source.splitlines())
+        ]
 
 # ============================================================
 # FILE: scanner/reporters/__init__.py

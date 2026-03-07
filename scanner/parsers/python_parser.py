@@ -1,23 +1,27 @@
 # scanner/parsers/python_parser.py
+
 import ast
 import re
 import sys
-from typing import List, Dict, Union, Any
+from typing import List, Dict, Union, Any, Optional  # ИСПРАВЛЕНО: добавлен Optional
+
 import chardet
+
 from .base import BaseParser
+
 
 class SecretReconstructor(ast.NodeVisitor):
     """
-    Продвинутый AST Visitor, который отслеживает присваивания переменных
-    и реконструирует строки, собранные из частей.
+    Продвинутый AST Visitor — отслеживает присваивания переменных и
+    реконструирует строки, собранные из частей (конкатенация, f-строки).
     """
+
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self.symbol_table: Dict[str, Any] = {}  # Таблица для хранения значений переменных
+        self.symbol_table: Dict[str, Any] = {}
         self.tokens: List[Dict] = []
 
     def _evaluate_node(self, node: ast.AST) -> Any:
-        """Рекурсивно вычисляет значение узла AST."""
         if isinstance(node, ast.Constant):
             return node.value
         if sys.version_info < (3, 8) and isinstance(node, ast.Str):
@@ -32,7 +36,7 @@ class SecretReconstructor(ast.NodeVisitor):
                     return left + right
                 except TypeError:
                     return None
-        if isinstance(node, ast.JoinedStr): # f-string
+        if isinstance(node, ast.JoinedStr):  # f-string
             parts = [self._evaluate_node(v) for v in node.values]
             if all(p is not None for p in parts):
                 return "".join(map(str, parts))
@@ -41,32 +45,44 @@ class SecretReconstructor(ast.NodeVisitor):
         return None
 
     def visit_Assign(self, node: ast.Assign):
-        """Посещает узлы присваивания (var = value)."""
         value = self._evaluate_node(node.value)
         if value is not None:
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     self.symbol_table[target.id] = value
-            # Добавляем реконструированное значение как токен
-            self.tokens.append({"value": str(value), "line": node.lineno, "file": self.file_path})
+                    self.tokens.append({
+                        "value": str(value),
+                        "line": node.lineno,
+                        "file": self.file_path
+                    })
         self.generic_visit(node)
 
     def visit_Constant(self, node: ast.Constant):
         if isinstance(node.value, str):
-            self.tokens.append({"value": node.value, "line": node.lineno, "file": self.file_path})
+            self.tokens.append({
+                "value": node.value,
+                "line": node.lineno,
+                "file": self.file_path
+            })
         self.generic_visit(node)
 
-    def visit_Str(self, node: ast.Str):
+    def visit_Str(self, node: ast.Str):  # Python < 3.8
         if isinstance(node.s, str):
-            self.tokens.append({"value": node.s, "line": node.lineno, "file": self.file_path})
+            self.tokens.append({
+                "value": node.s,
+                "line": node.lineno,
+                "file": self.file_path
+            })
         self.generic_visit(node)
 
     def get_tokens(self) -> List[Dict]:
         return self.tokens
 
+
 class PythonParser(BaseParser):
-    """ Продвинутый парсер для Python. """
-    CODING_RE = re.compile(br'^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)')
+    """Продвинутый парсер для Python с поддержкой AST и cp1251."""
+
+    CODING_RE = re.compile(br'^\s*#.*?coding[:=]\s*([-\w.]+)')
 
     def _detect_encoding(self, raw_bytes: bytes) -> str:
         if raw_bytes.startswith(b'\xef\xbb\xbf'):
@@ -88,7 +104,7 @@ class PythonParser(BaseParser):
             raw_bytes = content.encode('utf-8', errors='replace')
         else:
             raw_bytes = content
-        
+
         encoding = self._detect_encoding(raw_bytes)
         try:
             source = raw_bytes.decode(encoding, errors='replace')
@@ -96,27 +112,28 @@ class PythonParser(BaseParser):
             source = raw_bytes.decode('utf-8', errors='replace')
 
         all_tokens = []
-        tree: Optional[ast.AST] = None
+        tree: Optional[ast.AST] = None  # ИСПРАВЛЕНО: теперь Optional импортирован
 
-        # 1. Применяем "умный" AST-парсер с отслеживанием переменных.
+        # 1. AST-парсер с отслеживанием переменных и конкатенации
         try:
             tree = ast.parse(source, filename=file_path)
         except SyntaxError:
-            pass # Игнорируем синтаксические ошибки, переходя к построчному сканированию
+            pass
 
         if tree:
             visitor = SecretReconstructor(file_path)
             visitor.visit(tree)
             all_tokens.extend(visitor.get_tokens())
 
-        # 2. Всегда добавляем полное построчное сканирование файла.
-        # Это гарантирует, что правила, которые ищут паттерны в целых строках
-        # (например, 'password = "..."'), будут работать корректно.
+        # 2. Построчное сканирование — гарантирует работу всех regex-правил
         all_tokens.extend(self._fallback_line_scan(source, file_path))
-        
-        # Удаляем дубликаты токенов, если они есть
+
+        # Дедупликация по (value, line)
         unique_tokens = list({(d['value'], d['line']): d for d in all_tokens}.values())
         return unique_tokens
 
     def _fallback_line_scan(self, source: str, file_path: str) -> List[Dict]:
-        return [{"value": line, "line": i + 1, "file": file_path} for i, line in enumerate(source.splitlines())]
+        return [
+            {"value": line, "line": i + 1, "file": file_path}
+            for i, line in enumerate(source.splitlines())
+        ]

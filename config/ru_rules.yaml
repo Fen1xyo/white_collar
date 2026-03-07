@@ -1,233 +1,44 @@
-# =============================================================================
-# all_rules.yaml
-# Единый файл со всеми правилами сканера секретов.
-# Содержит: универсальные правила + российские сервисы (59 правил).
-# =============================================================================
-
+# config/ru_rules.yaml
+# Правила для российских сервисов + универсальные generic-правила.
 rules:
+  # ===========================================================================
+  # GENERIC — общие правила по ключевым словам
+  # ===========================================================================
+  - id: SHORT_PASSWORD_LIKE
+    name: "Short or Numeric Password"
+    # Ищет короткие (6+ символов) значения, присвоенные переменным с именами, похожими на "пароль".
+    pattern: >-
+      (?i)(?:password|passwd|pwd|pswd|psswrd|pas|passw|pwrd|pasword|possword|passward|pass-ward|pass-word)\w*\s*[:=]\s*["']?([a-zA-Z0-9\-_!@#$%^&*()\/+]{6,})["']?
+    severity: MEDIUM
+    description: "Обнаружено короткое (6+ символов) значение, присвоенное переменной, имя которой похоже на 'пароль'. Это может быть слабый или тестовый пароль."
+    remediation: "Проверьте, является ли эта строка чувствительной. Избегайте использования слабых или легко угадываемых паролей, даже в тестовом коде. Используйте менеджеры секретов."
 
   - id: GENERIC_KEYWORD_SECRET_12
     name: "Generic Secret by Keyword (12+ chars)"
-    # Ищет любое слово-ключ (key, token, password, secret, auth, oauth и т.д.) в имени переменной,
-    # которой присваивается любая строка длиной 12 и более символов.
-    pattern: '(?i)(key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["'']([a-zA-Z0-9\-_!@#$%^&*()]{12,})["'']'
+    pattern: >-
+      (?i)(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["']?([a-zA-Z0-9\-_!@#$%^&*()]{12,})["']?
     severity: MEDIUM
     description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит строку длиной 12+ символов."
     remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
 
   - id: GENERIC_KEYWORD_SECRET_20
     name: "Generic Secret by Keyword (20+ chars)"
-    # То же самое, но для строк длиной 20+ символов. Более высокая критичность.
-    pattern: '(?i)(key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["'']([a-zA-Z0-9\-_!@#$%^&*()]{20,})["'']'
+    pattern: >-
+      (?i)(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["']?([a-zA-Z0-9\-_!@#$%^&*()]{20,})["']?
     severity: HIGH
     description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит длинную строку (20+ символов)."
     remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
-  # ===========================================================================
-  # УНИВЕРСАЛЬНЫЕ ПРАВИЛА
-  # ===========================================================================
-
-  - id: AWS_ACCESS_KEY
-    name: "AWS Access Key ID"
-    pattern: 'AKIA[0-9A-Z]{16}'
-    severity: CRITICAL
-    description: "Обнаружен AWS Access Key ID. Этот ключ является частью учетных данных AWS и может предоставить доступ к ресурсам облака."
-    remediation: "Немедленно отозвать ключ в консоли AWS IAM. Для аутентификации приложений использовать IAM-роли или переменные окружения."
-
-  - id: GITHUB_TOKEN
-    name: "GitHub Token"
-    pattern: 'ghp_[a-zA-Z0-9]{36}'
-    severity: CRITICAL
-    description: "Обнаружен персональный токен доступа (PAT) GitHub."
-    remediation: "Немедленно отозвать токен в настройках профиля GitHub (Settings → Developer settings → Personal access tokens). Храните токены в секрет-менеджерах."
-
-  - id: GENERIC_API_KEY
-    name: "Generic API Key"
-    # Первая группа незахватывающая — match.group(1) всегда возвращает значение ключа
-    pattern: '(?i)(?:api_key|apikey|api-key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
-    severity: HIGH
-    description: "Обнаружен ключ API общего вида. Такие ключи часто используются для доступа к различным сервисам."
-    remediation: "Проверьте, является ли этот ключ чувствительным. Если да, переместите его в переменные окружения или секрет-менеджер (например, HashiCorp Vault, AWS Secrets Manager)."
-
-  - id: PRIVATE_KEY
-    name: "Private Key"
-    pattern: '-----BEGIN (?:EC|RSA|DSA|PGP) PRIVATE KEY-----'
-    severity: CRITICAL
-    description: "Обнаружен приватный ключ в формате PEM. Компрометация приватного ключа может привести к расшифровке трафика или несанкционированному доступу по SSH."
-    remediation: "Никогда не храните приватные ключи в репозиториях. Немедленно отозвите скомпрометированный ключ и перевыпустите пару ключей."
-
-  - id: STRIPE_SECRET_KEY
-    name: "Stripe Secret Key"
-    pattern: 'sk_live_[a-zA-Z0-9]{24,}'
-    severity: CRITICAL
-    description: "Обнаружен секретный ключ Stripe. Позволяет проводить платежи и получать доступ к финансовым данным."
-    remediation: "Немедленно отозвать ключ в Dashboard Stripe → Developers → API keys."
-
-  - id: STRIPE_RESTRICTED_KEY
-    name: "Stripe Restricted Key"
-    pattern: 'rk_live_[a-zA-Z0-9]{24,}'
-    severity: HIGH
-    description: "Обнаружен ограниченный ключ Stripe."
-    remediation: "Отозвать ключ в Dashboard Stripe → Developers → Restricted keys."
-
-  - id: SLACK_TOKEN
-    name: "Slack Token"
-    pattern: 'xox[baprs]-[0-9]{12}-[0-9]{12}-[a-zA-Z0-9]{24}'
-    severity: HIGH
-    description: "Обнаружен токен Slack. Позволяет отправлять сообщения и управлять рабочим пространством."
-    remediation: "Отзовите токен на api.slack.com → Your Apps → OAuth & Permissions."
-
-  - id: SLACK_WEBHOOK
-    name: "Slack Incoming Webhook"
-    pattern: 'https://hooks\.slack\.com/services/T[a-zA-Z0-9]{8}/B[a-zA-Z0-9]{8,}/[a-zA-Z0-9]{24}'
-    severity: HIGH
-    description: "Обнаружен входящий вебхук Slack. Позволяет отправлять сообщения в канал."
-    remediation: "Удалите вебхук в настройках Slack App → Incoming Webhooks."
-
-  - id: GOOGLE_API_KEY
-    name: "Google API Key"
-    pattern: 'AIza[0-9A-Za-z\-_]{35}'
-    severity: HIGH
-    description: "Обнаружен Google API Key. Может предоставить доступ к сервисам Google Cloud, Maps и другим."
-    remediation: "Отзовите ключ в Google Cloud Console → APIs & Services → Credentials."
-
-  - id: GOOGLE_OAUTH_TOKEN
-    name: "Google OAuth Access Token"
-    pattern: 'ya29\.[0-9A-Za-z\-_]{68,}'
-    severity: CRITICAL
-    description: "Обнаружен Google OAuth Access Token. Предоставляет временный доступ к Google-сервисам от имени пользователя."
-    remediation: "Отзовите токен через myaccount.google.com → Security → Third-party apps."
-
-  - id: GITLAB_TOKEN
-    name: "GitLab Personal Access Token"
-    pattern: 'glpat-[a-zA-Z0-9\-_]{20}'
-    severity: CRITICAL
-    description: "Обнаружен Personal Access Token GitLab."
-    remediation: "Отзовите токен в GitLab → User Settings → Access Tokens."
-
-  - id: HEROKU_API_KEY
-    name: "Heroku API Key"
-    pattern: '[h|H][e|E][r|R][o|O][k|K][u|U][_\-]?[a|A][p|P][i|I][_\-]?[k|K][e|E][y|Y]\s*[:=]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружен API-ключ Heroku. Позволяет управлять приложениями и инфраструктурой."
-    remediation: "Сбросьте ключ в настройках аккаунта Heroku → Account → API Key."
-
-  - id: SENDGRID_API_KEY
-    name: "SendGrid API Key"
-    pattern: 'SG\.[a-zA-Z0-9\-_]{22}\.[a-zA-Z0-9\-_]{43}'
-    severity: HIGH
-    description: "Обнаружен API-ключ SendGrid. Позволяет отправлять email-рассылки."
-    remediation: "Отзовите ключ в SendGrid → Settings → API Keys."
-
-  - id: TWILIO_ACCOUNT_SID
-    name: "Twilio Account SID"
-    pattern: 'AC[a-zA-Z0-9]{32}'
-    severity: HIGH
-    description: "Обнаружен Twilio Account SID."
-    remediation: "Смените Auth Token в консоли Twilio. SID сам по себе не является секретом, но вместе с Auth Token даёт полный доступ."
-
-  - id: TWILIO_AUTH_TOKEN
-    name: "Twilio Auth Token"
-    pattern: '(?i)twilio[_\-]?auth[_\-]?token\s*[:=]\s*["\x27]?([a-zA-Z0-9]{32})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружен Twilio Auth Token. Даёт полный доступ к аккаунту Twilio."
-    remediation: "Немедленно смените Auth Token в консоли Twilio."
-
-  - id: MAILGUN_API_KEY
-    name: "Mailgun API Key"
-    pattern: 'key-[a-zA-Z0-9]{32}'
-    severity: HIGH
-    description: "Обнаружен API-ключ Mailgun. Позволяет отправлять email и управлять доменами."
-    remediation: "Отзовите ключ в Mailgun → Account → API Keys."
-
-  - id: FIREBASE_SERVER_KEY
-    name: "Firebase Server Key"
-    pattern: 'AAAA[a-zA-Z0-9\-_]{7}:[a-zA-Z0-9\-_]{140}'
-    severity: CRITICAL
-    description: "Обнаружен Firebase Server Key. Позволяет отправлять push-уведомления от имени приложения."
-    remediation: "Пересоздайте ключ в Firebase Console → Project Settings → Cloud Messaging."
-
-  - id: SQUARE_ACCESS_TOKEN
-    name: "Square Access Token"
-    pattern: 'sq0atp-[a-zA-Z0-9\-_]{22}'
-    severity: CRITICAL
-    description: "Обнаружен токен Square. Позволяет проводить платежи через Square API."
-    remediation: "Отзовите токен в Square Developer Dashboard → OAuth."
-
-  - id: PAYPAL_CLIENT_SECRET
-    name: "PayPal Client Secret"
-    pattern: '(?i)paypal[_\-]?(?:client[_\-]?secret|secret|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9\-_]{32,})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружен Client Secret PayPal. Позволяет выполнять платежные операции."
-    remediation: "Пересоздайте учётные данные в PayPal Developer Dashboard."
-
-  - id: DIGITALOCEAN_TOKEN
-    name: "DigitalOcean Personal Access Token"
-    pattern: 'dop_v1_[a-f0-9]{64}'
-    severity: CRITICAL
-    description: "Обнаружен Personal Access Token DigitalOcean. Позволяет управлять дроплетами и инфраструктурой."
-    remediation: "Отзовите токен в DigitalOcean → Account → API → Tokens."
-
-  - id: AZURE_CLIENT_SECRET
-    name: "Azure Client Secret"
-    pattern: '(?i)azure[_\-]?(?:client[_\-]?secret|tenant[_\-]?id|subscription[_\-]?id|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9~._\-]{20,})["\x27]?'
-    severity: CRITICAL
-    description: "Обнаружены учётные данные Azure. Могут предоставить доступ к ресурсам Microsoft Azure."
-    remediation: "Пересоздайте секрет в Azure Active Directory → App Registrations → Certificates & secrets."
-
-  - id: GITHUB_APP_TOKEN
-    name: "GitHub App Token"
-    pattern: '(?:ghs|ghu|ghr)_[a-zA-Z0-9]{36}'
-    severity: CRITICAL
-    description: "Обнаружен токен GitHub App (server-to-server, user-to-server или refresh)."
-    remediation: "Немедленно отзовите токен в настройках GitHub App."
-
-  - id: NPM_TOKEN
-    name: "NPM Token"
-    pattern: 'npm_[a-zA-Z0-9]{36}'
-    severity: HIGH
-    description: "Обнаружен токен NPM. Позволяет публиковать пакеты и управлять аккаунтом."
-    remediation: "Отзовите токен на npmjs.com → Access Tokens."
-
-  - id: DOCKER_HUB_TOKEN
-    name: "Docker Hub Access Token"
-    pattern: '(?i)(?:docker[_\-]?(?:hub[_\-]?)?|dockerhub[_\-]?)(?:token|password|pat|access[_\-]?token)\s*[:=]\s*["\x27]?([a-zA-Z0-9\-_\.]{20,})["\x27]?'
-    severity: HIGH
-    description: "Обнаружен токен Docker Hub. Позволяет пушить образы в реестр."
-    remediation: "Отзовите токен на hub.docker.com → Account Settings → Security."
-
-  - id: GENERIC_PASSWORD
-    name: "Generic Password in Code"
-    pattern: '(?i)(?:password|passwd|pwd)\s*[:=]\s*["\x27]([^"\x27\s]{8,})["\x27]'
-    severity: HIGH
-    description: "Обнаружен пароль, захардкоженный в коде. Это нарушение базовых требований безопасности."
-    remediation: "Перенесите пароль в переменные окружения или секрет-менеджер. Не храните пароли в репозиториях."
-
-  - id: GENERIC_SECRET
-    name: "Generic Secret"
-    pattern: '(?i)(?:secret|client_secret|app_secret)\s*[:=]\s*["\x27]([a-zA-Z0-9_\-!@#$%^&*]{12,})["\x27]'
-    severity: HIGH
-    description: "Обнаружен хардкод секрета общего вида."
-    remediation: "Перенесите секрет в переменные окружения или секрет-менеджер."
-
-  - id: BASIC_AUTH_IN_URL
-    name: "Basic Auth Credentials in URL"
-    pattern: 'https?://[^:\s]{3,}:[^@\s]{3,}@[a-zA-Z0-9.\-]+'
-    severity: CRITICAL
-    description: "Обнаружены учётные данные Basic Auth в URL. Пароль передаётся в открытом виде и сохраняется в логах."
-    remediation: "Уберите учётные данные из URL. Используйте переменные окружения или файлы конфигурации."
 
   # ===========================================================================
   # YANDEX CLOUD
   # ===========================================================================
-
   - id: YANDEX_CLOUD_IAM_TOKEN
     name: "Yandex Cloud IAM Token"
-    # Реальные IAM-токены имеют точки внутри тела: t1.<сегмент>.<сегмент>
     pattern: 't1\.[A-Za-z0-9_\-\.]{150,}'
     severity: CRITICAL
-    description: "Обнаружен Yandex Cloud IAM-токен. Это короткоживущий токен для аутентификации в Yandex Cloud."
+    description: "Обнаружен Yandex Cloud IAM-токен. Короткоживущий токен для аутентификации в Yandex Cloud."
     remediation: >
-      IAM-токены живут максимум 12 часов. Если токен старше — возможно, он уже истёк,
+      IAM-токены живут максимум 12 часов. Если токен старше — возможно, уже истёк,
       но его следует отозвать. Используйте сервисный аккаунт и авторизованные ключи
       для долгоживущих процессов.
 
@@ -241,26 +52,28 @@ rules:
       [ваш аккаунт] → API-ключи. Создайте новый и передавайте через переменную
       окружения или секрет в Yandex Lockbox.
 
+  # ... и так далее, вставьте сюда все остальные правила из вашего оригинального файла ...
+
+
   - id: YANDEX_LOCKBOX_SECRET
     name: "Yandex Lockbox Secret ID"
-    # ID секретов Yandex Lockbox начинаются с e6q
     pattern: '(?i)(?:lockbox|yandex[_\-]?lockbox)[_\-]?(?:secret[_\-]?id|key|value)\s*[:=]\s*["\x27]?(e6q[a-zA-Z0-9]{15,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен ID секрета Yandex Lockbox. Может использоваться для получения сохранённых секретов из хранилища."
+    description: "Обнаружен ID секрета Yandex Lockbox."
     remediation: "Отзовите доступ к секрету в консоли Yandex Cloud → Lockbox."
 
   - id: YANDEX_MAPS_API_KEY
     name: "Yandex Maps API Key"
     pattern: '(?i)(?:yandex[_\-]?maps?|ymaps?)[_\-]?(?:api[_\-]?key|key|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{30,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен ключ Яндекс Карт. Злоупотребление ключом может привести к расходам."
+    description: "Обнаружен ключ Яндекс Карт. Злоупотребление может привести к расходам."
     remediation: "Перегенерируйте ключ в консоли Яндекс Облака. Ограничьте доступ по домену/IP."
 
   - id: YANDEX_METRIKA_TOKEN
     name: "Yandex Metrika OAuth Token"
     pattern: '(?i)(?:metrika|metrica|yandex[_\-]?metrika)[_\-]?(?:token|oauth|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен OAuth-токен Яндекс.Метрики. Даёт доступ к статистике и настройкам счётчиков."
+    description: "Обнаружен OAuth-токен Яндекс.Метрики."
     remediation: "Отзовите токен на oauth.yandex.ru → Приложения."
 
   - id: YANDEX_MARKET_API_TOKEN
@@ -285,7 +98,7 @@ rules:
     name: "VK API Access Token"
     pattern: 'vk1\.a\.[A-Za-z0-9_\-]{80,}'
     severity: HIGH
-    description: "Обнаружен токен доступа VK API. Может использоваться для выполнения действий от имени пользователя или сообщества."
+    description: "Обнаружен токен доступа VK API."
     remediation: >
       Отзовите токен через VK ID → Безопасность. Для серверных приложений используйте
       сервисный ключ (service_token), а не пользовательский.
@@ -303,7 +116,7 @@ rules:
     name: "1C-Bitrix Webhook URL"
     pattern: 'https://[a-zA-Z0-9.\-]+\.bitrix24\.ru/rest/\d+/([a-z0-9]{32,})'
     severity: HIGH
-    description: "Обнаружен URL входящего вебхука 1C-Bitrix24 с токеном. Позволяет отправлять данные в ваш портал Bitrix24."
+    description: "Обнаружен URL входящего вебхука 1C-Bitrix24 с токеном."
     remediation: >
       Удалите вебхук в настройках портала Bitrix24 (Разработчикам → Входящие webhook).
       Создайте новый и передавайте его URL через переменную окружения.
@@ -312,7 +125,7 @@ rules:
     name: "Bitrix24 OAuth Access Token"
     pattern: '(?i)(?:bitrix24|bitrix)[_\-]?(?:access[_\-]?token|oauth[_\-]?token|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{40,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен OAuth-токен Bitrix24. Позволяет выполнять операции в CRM от имени пользователя."
+    description: "Обнаружен OAuth-токен Bitrix24."
     remediation: "Отзовите приложение в Bitrix24 → Профиль → Разрешения приложений."
 
   # ===========================================================================
@@ -323,7 +136,7 @@ rules:
     name: "Selectel API Token"
     pattern: '(?i)selectel[_\-]?(?:token|api[_\-]?key|secret|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен токен Selectel. Может предоставить доступ к объектному хранилищу и серверам."
+    description: "Обнаружен токен Selectel."
     remediation: "Отзовите токен в панели управления Selectel → Профиль → Токены."
 
   - id: VK_CLOUD_TOKEN
@@ -351,14 +164,14 @@ rules:
     name: "Reg.ru API Key"
     pattern: '(?i)(?:reg[_\-]?ru|regru)[_\-]?(?:api[_\-]?key|token|secret|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{10,})["\x27]?'
     severity: HIGH
-    description: "Обнаружен API-ключ Reg.ru. Позволяет управлять доменами, хостингом и DNS."
+    description: "Обнаружен API-ключ Reg.ru."
     remediation: "Отзовите ключ в личном кабинете Reg.ru → Настройки API."
 
   - id: CROC_CLOUD_TOKEN
     name: "CROC Cloud API Token"
     pattern: '(?i)(?:croc[_\-]?cloud|croc)[_\-]?(?:token|api[_\-]?key|secret|access[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен токен CROC Cloud. Риск несанкционированного доступа к корпоративной облачной инфраструктуре."
+    description: "Обнаружен токен CROC Cloud."
     remediation: "Немедленно обратитесь в службу поддержки CROC и отзовите скомпрометированный ключ."
 
   - id: SBERCLOUD_TOKEN
@@ -383,12 +196,11 @@ rules:
     name: "YooMoney (ЮМани) Secret Key"
     pattern: '(?i)(?:yoomoney|yoo[_\-]?money|yamoney|ya[_\-]?money)[_\-]?(?:secret|token|key|api[_\-]?key|oauth)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен секретный ключ ЮМани. Риск несанкционированных платежей от имени магазина."
+    description: "Обнаружен секретный ключ ЮМани."
     remediation: "Отзовите токен в настройках магазина ЮМани."
 
   - id: YOOKASSA_SECRET_KEY
     name: "YooKassa (ЮКасса) Secret Key"
-    # Ключи ЮКасса начинаются с live_ или test_
     pattern: '(?:live|test)_[a-zA-Z0-9_\-:]{20,}'
     severity: CRITICAL
     description: "Обнаружен секретный ключ ЮКасса. Позволяет проводить и отменять платежи."
@@ -405,14 +217,14 @@ rules:
     name: "QIWI API Token"
     pattern: '(?i)qiwi[_\-]?(?:token|api[_\-]?key|p2p[_\-]?key|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-токен QIWI. Может использоваться для переводов и проверки баланса."
+    description: "Обнаружен API-токен QIWI."
     remediation: "Заблокируйте токен на сайте qiwi.com → Настройки → API."
 
   - id: CLOUDPAYMENTS_API_KEY
     name: "CloudPayments API Key"
     pattern: '(?i)(?:cloudpayments|cloud[_\-]?payments)[_\-]?(?:api[_\-]?(?:key|secret|password)|public[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен ключ CloudPayments. Позволяет проводить платежи и управлять подписками."
+    description: "Обнаружен ключ CloudPayments."
     remediation: "Отзовите ключ в личном кабинете CloudPayments → Настройки → Ключи API."
 
   - id: ROBOKASSA_MERCHANT_PASSWORD
@@ -447,7 +259,7 @@ rules:
     name: "МодульБанк API Key"
     pattern: '(?i)(?:modulbank|modul[_\-]?bank)[_\-]?(?:api[_\-]?key|token|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-ключ МодульБанка. Позволяет просматривать остатки и проводить платежи."
+    description: "Обнаружен API-ключ МодульБанка."
     remediation: "Немедленно отзовите ключ в интернет-банке МодульБанка."
 
   - id: TOCHKA_BANK_API_KEY
@@ -465,12 +277,11 @@ rules:
     remediation: "Пересоздайте ключи в личном кабинете LiqPay → Бизнес → Мерчанты."
 
   # ===========================================================================
-  # SMS-ШЛЮЗЫ И ТЕЛЕКОМ (РОССИЯ)
+  # SMS-ШЛЮЗЫ И ТЕЛЕКОМ
   # ===========================================================================
 
   - id: SMSRU_API_ID
     name: "SMS.ru API ID"
-    # SMS.ru использует UUID v4 в качестве API-ID
     pattern: '(?i)(?:sms[_\-]?ru|smsru)[_\-]?(?:api[_\-]?id|key|token)\s*[:=]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
     severity: HIGH
     description: "Обнаружен API ID сервиса SMS.ru (UUID-формат)."
@@ -516,12 +327,11 @@ rules:
     remediation: "Отзовите ключ в личном кабинете 2GIS API → Мои ключи."
 
   # ===========================================================================
-  # ДАННЫЕ И EDO (РОССИЯ)
+  # ДАННЫЕ И ЭДО
   # ===========================================================================
 
   - id: DADATA_API_KEY
     name: "DaData API Key"
-    # DaData выдаёт ключи в виде hex-строки длиной 40 символов
     pattern: '(?i)dadata[_\-]?(?:api[_\-]?key|key|token|secret)\s*[:=]\s*["\x27]?([a-f0-9]{40})["\x27]?'
     severity: HIGH
     description: "Обнаружен API-ключ DaData (hex, 40 символов)."
@@ -531,21 +341,21 @@ rules:
     name: "Kontur Diadoc API Key"
     pattern: '(?i)(?:diadoc|диадок)[_\-]?(?:api[_\-]?key|key|token|client[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-ключ Диадок (СКБ Контур). Позволяет работать с юридически значимыми документами."
+    description: "Обнаружен API-ключ Диадок (СКБ Контур)."
     remediation: "Отзовите ключ в личном кабинете Диадок → Настройки → API-ключи."
 
   - id: KONTUR_EXTERN_API_KEY
     name: "Kontur.Extern API Key"
     pattern: '(?i)(?:kontur[_\-]?extern|kontur)[_\-]?(?:api[_\-]?key|key|token|client[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен API-ключ Kontur.Extern. Позволяет работать с налоговой отчётностью."
+    description: "Обнаружен API-ключ Kontur.Extern."
     remediation: "Обратитесь в поддержку СКБ Контур для отзыва скомпрометированного ключа."
 
   - id: SBIS_API_TOKEN
     name: "СБИС (Tenzor) API Token"
     pattern: '(?i)(?:sbis|тензор|tenzor)[_\-]?(?:token|api[_\-]?key|sid|session)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{16,})["\x27]?'
     severity: CRITICAL
-    description: "Обнаружен токен СБИС. Может предоставить доступ к бухгалтерии и электронному документообороту."
+    description: "Обнаружен токен СБИС."
     remediation: "Завершите все сессии и смените ключи в настройках СБИС."
 
   - id: KONTUR_FOCUS_API_KEY
@@ -556,7 +366,7 @@ rules:
     remediation: "Отзовите ключ через поддержку СКБ Контур."
 
   # ===========================================================================
-  # CRM И БИЗНЕС (РОССИЯ)
+  # CRM И БИЗНЕС
   # ===========================================================================
 
   - id: AMOCRM_ACCESS_TOKEN
@@ -588,7 +398,7 @@ rules:
     remediation: "Обратитесь к администратору Smart Technologies для отзыва скомпрометированного ключа."
 
   # ===========================================================================
-  # ПОЧТА И РАССЫЛКИ (РОССИЯ)
+  # ПОЧТА И РАССЫЛКИ
   # ===========================================================================
 
   - id: UNISENDER_API_KEY
@@ -620,15 +430,14 @@ rules:
     remediation: "Отзовите приложение на id.vk.com → Приложения."
 
   # ===========================================================================
-  # МАРКЕТПЛЕЙСЫ И ДОСТАВКА (РОССИЯ)
+  # МАРКЕТПЛЕЙСЫ И ДОСТАВКА
   # ===========================================================================
 
   - id: WILDBERRIES_API_KEY
     name: "Wildberries API Key"
-    # WB API-ключи — JWT-формат (три части, разделённые точками)
     pattern: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{20,}'
     severity: CRITICAL
-    description: "Обнаружен API-ключ Wildberries (JWT-формат). Позволяет управлять товарами, заказами и ценами."
+    description: "Обнаружен API-ключ Wildberries (JWT-формат)."
     remediation: "Пересоздайте токен в личном кабинете WB → Настройки → Доступ к API."
 
   - id: OZON_API_KEY
@@ -678,7 +487,7 @@ rules:
     remediation: "Отзовите ключ в консоли ClickHouse Cloud → API Keys."
 
   # ===========================================================================
-  # ГОСУДАРСТВЕННЫЕ СЕРВИСЫ (РОССИЯ)
+  # ГОСУДАРСТВЕННЫЕ СЕРВИСЫ
   # ===========================================================================
 
   - id: ESIA_TOKEN

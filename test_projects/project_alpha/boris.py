@@ -1,2 +1,5 @@
 OAUTH_ID = 'VY^&*&7776f6rgwvt687trv789w3nf85y4569'
 AVITO_PORN_YANDEX = 'eR54UUy9OL34'
+psswrd = 131313130
+pswd = 103114
+pas =  12415
