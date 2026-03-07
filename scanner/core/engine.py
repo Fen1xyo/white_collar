@@ -17,60 +17,44 @@ from ..whitelist.whitelist_manager import WhitelistManager
 # Ранги для определения "важности" правила при дедупликации
 _SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
+# Замени функцию _deduplicate_findings на эту:
 def _deduplicate_findings(findings: List[Finding]) -> List[Finding]:
-    """
-    Убирает дубликаты находок. Логика:
-    1. Группирует все находки по файлу и номеру строки.
-    2. В пределах одной строки, если секрет A является подстрокой секрета Б,
-       отбрасывается находка А, если ее критичность не выше.
-    3. Это убирает срабатывания общих правил, когда есть более точное.
-    """
     findings_to_keep: List[Finding] = []
-    
-    # Сортируем для группировки
     findings.sort(key=lambda f: (f.file_path, f.line_number))
-    
-    # Группируем по файлу и строке
+
     for _, group in groupby(findings, key=lambda f: (f.file_path, f.line_number)):
         line_findings = list(group)
-        
         if len(line_findings) <= 1:
             findings_to_keep.extend(line_findings)
             continue
-
-        # Индексы находок, которые нужно удалить
+            
         discarded_indices = set()
-
         for i in range(len(line_findings)):
             for j in range(len(line_findings)):
                 if i == j or i in discarded_indices or j in discarded_indices:
                     continue
-
                 f_i = line_findings[i]
                 f_j = line_findings[j]
-
-                # Если секрет f_i является подстрокой f_j
+                
                 if f_i.secret in f_j.secret and len(f_i.secret) < len(f_j.secret):
-                    # Отбрасываем f_i (более короткий), если его важность не строго больше
                     if _SEVERITY_RANK.get(f_i.severity, 0) <= _SEVERITY_RANK.get(f_j.severity, 0):
                         discarded_indices.add(i)
-                # Аналогично в обратную сторону
                 elif f_j.secret in f_i.secret and len(f_j.secret) < len(f_i.secret):
                     if _SEVERITY_RANK.get(f_j.severity, 0) <= _SEVERITY_RANK.get(f_i.severity, 0):
                         discarded_indices.add(j)
-                # Если секреты равны, отбрасываем тот, что с меньшей критичностью
                 elif f_i.secret == f_j.secret:
                     if _SEVERITY_RANK.get(f_i.severity, 0) < _SEVERITY_RANK.get(f_j.severity, 0):
                         discarded_indices.add(i)
                     else:
                         discarded_indices.add(j)
-
+                        
         for i, f in enumerate(line_findings):
             if i not in discarded_indices:
                 findings_to_keep.append(f)
-
+                
     return findings_to_keep
 
+# Остальной класс ScanEngine оставь без изменений
 
 class ScanEngine:
     """

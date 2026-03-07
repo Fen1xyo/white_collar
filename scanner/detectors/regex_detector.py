@@ -1,8 +1,7 @@
 # secret-scanner/scanner/detectors/regex_detector.py
-
 import re
 from typing import List, Optional
-# ИСПРАВЛЕНО: импортируем базовый класс, а не определяем заново
+
 from .base import BaseDetector
 from ..core.finding import Finding
 from ..rules.rule import Rule
@@ -31,11 +30,18 @@ class RegexDetector(BaseDetector):
             try:
                 matches = pattern.finditer(content)
                 for match in matches:
-                    secret = match.group(1) if match.groups() else match.group(0)
-                    
-                    if not secret:
+                    # ИСПРАВЛЕНО: Логика для извлечения секрета из нескольких групп захвата.
+                    # Находит первую непустую группу, что позволяет использовать паттерны
+                    # вида `...(?:"(group1)"|'(group2)')` для поиска в разных типах кавычек.
+                    if match.groups():
+                        secret = next((g for g in match.groups() if g is not None), None)
+                    else:
+                        secret = match.group(0)
+
+                    # Пропускаем пустые или слишком короткие находки
+                    if not secret or len(secret) < 6:
                         continue
-                        
+
                     finding = Finding(
                         file_path=file_path,
                         line_number=line_number,
@@ -44,7 +50,7 @@ class RegexDetector(BaseDetector):
                         rule_name=rule.name,
                         severity=rule.severity,
                         secret=secret,
-                        line_content=content.strip() 
+                        line_content=content.strip()
                     )
                     findings.append(finding)
             except Exception as e:

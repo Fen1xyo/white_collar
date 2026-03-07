@@ -5,23 +5,33 @@
     <title>{{ title }}</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+    <!-- Подключаем только айтишный шрифт Hack -->
+    <link href="https://fonts.googleapis.com/css2?family=Hack:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #F5F4F0;
-            --card: #FFFFFF;
-            --text: #0A0A0A;
-            --muted: #7A7A7A;
-            --border: #E2E0D8;
-            --red: #C8102E;
-            --red-light: #FFF0F2;
-            --red-mid: #F5C6CE;
-            --orange: #E8610A;
+            /* Темный глубокий синий фон */
+            --bg-dark: #070B19;
+            
+            /* Цвета интерфейса */
+            --card: rgba(255, 255, 255, 0.95);
+            --text: #1A1A1A;
+            --muted: #666666;
+            --border: #E0E6E2;
+            
+            /* Яркий кислотно-зеленый (неон) */
+            --primary: #00B14F;
+            --primary-light: #E5F7ED;
+            --neon-green: #94E466; 
+            
+            /* Палитра угроз */
+            --red: #E63946;
+            --orange: #FF7A00;
             --blue: #1A56DB;
-            --green: #0A7A4B;
-            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            --shadow: 0 4px 16px rgba(0,0,0,0.07), 0 2px 6px rgba(0,0,0,0.04);
-            --shadow-lg: 0 12px 40px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
+            --green: #00B14F;
+            
+            --shadow-sm: 0 4px 12px rgba(0,0,0,0.1);
+            --shadow: 0 12px 30px rgba(0, 177, 79, 0.15);
+            --shadow-lg: 0 20px 50px rgba(0, 177, 79, 0.25);
             --radius: 16px;
             --radius-sm: 10px;
         }
@@ -29,463 +39,385 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: 'DM Sans', sans-serif;
-            background-color: var(--bg);
-            background-image:
-                radial-gradient(circle at 15% 50%, rgba(200,16,46,0.04) 0%, transparent 50%),
-                radial-gradient(circle at 85% 20%, rgba(26,86,219,0.04) 0%, transparent 45%);
+            /* Единый шрифт Hack для всего документа */
+            font-family: 'Hack', monospace;
+            background-color: var(--bg-dark);
             color: var(--text);
             min-height: 100vh;
             padding: 2.5rem 2rem;
             font-size: 14px;
+            position: relative;
+            z-index: 1;
+            overflow-x: hidden;
         }
 
-        .container { max-width: 1280px; margin: 0 auto; }
+        /* ── АНИМИРОВАННЫЙ ФОН: ФИГУРА И СИМВОЛЫ ── */
+        .bg-elements {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: -1; overflow: hidden;
+            background-color: var(--bg-dark);
+        }
+        
+        .glow-shape { position: absolute; border-radius: 50%; filter: blur(150px); opacity: 0.3; }
+        .glow-1 { width: 800px; height: 800px; background: #1A56DB; top: -20%; left: -10%; animation: drift 25s infinite alternate ease-in-out; }
+        .glow-2 { width: 600px; height: 600px; background: #00B14F; bottom: -20%; right: -10%; animation: drift 20s infinite alternate-reverse ease-in-out; }
+
+        /* Зеленая фигура по центру */
+        .bg-swoosh {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 1600px; height: 1600px;
+            transform: translate(-50%, -50%);
+            opacity: 0.4;
+            filter: drop-shadow(0 0 50px rgba(148, 228, 102, 0.4));
+            animation: floatSwoosh 10s ease-in-out infinite alternate;
+        }
+
+        /* Плавающие хакерские символы (*, #, <>, {}) */
+        .hacker-symbol {
+            position: absolute;
+            color: var(--neon-green);
+            font-family: 'Hack', monospace;
+            font-weight: 700;
+            opacity: 0.15;
+            text-shadow: 0 0 10px var(--neon-green);
+            animation: floatSymbol linear infinite;
+        }
+        
+        .sym-1 { top: 15%; right: 10%; font-size: 80px; animation-duration: 35s; content: "*"; }
+        .sym-2 { bottom: 20%; left: 8%; font-size: 100px; animation-direction: reverse; animation-duration: 40s; }
+        .sym-3 { top: 30%; left: 15%; font-size: 60px; animation-duration: 25s; }
+        .sym-4 { bottom: 15%; right: 20%; font-size: 90px; animation-direction: reverse; animation-duration: 30s; }
+        .sym-5 { top: 5%; left: 40%; font-size: 70px; animation-duration: 45s; }
+        .sym-6 { bottom: 35%; right: 8%; font-size: 85px; animation-duration: 38s; }
+        .sym-7 { top: 60%; left: 5%; font-size: 65px; animation-direction: reverse; animation-duration: 32s; }
+        .sym-8 { top: 80%; right: 40%; font-size: 75px; animation-duration: 42s; }
+
+        .container { max-width: 1280px; margin: 0 auto; backdrop-filter: blur(5px); }
 
         /* ── HEADER ── */
         header {
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: center;
-            gap: 2rem;
-            margin-bottom: 3rem;
-            padding: 2.5rem 3rem;
-            background: var(--card);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            position: relative;
-            overflow: hidden;
+            display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+            gap: 2rem; margin-bottom: 3rem; 
+            /* Увеличен padding, чтобы плашки с ТГ влазили без обрезки */
+            padding: 2.5rem 3rem 4rem 3rem; 
+            background: var(--card); border-radius: var(--radius);
+            border: 1px solid var(--border); box-shadow: var(--shadow);
+            position: relative; overflow: visible; /* Важно для вылетающих плашек */
+            animation: fadeInDown 0.8s ease-out;
+            backdrop-filter: blur(10px);
         }
+        /* Убираем overflow: hidden с хедера, чтобы плашки ТГ не обрезались, 
+           и переносим закругление на псевдоэлемент градиента */
         header::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--red) 0%, #FF5372 50%, var(--red) 100%);
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5px;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--neon-green) 50%, var(--primary) 100%);
+            background-size: 200% auto; animation: gradientShift 3s linear infinite;
+            border-top-left-radius: var(--radius); border-top-right-radius: var(--radius);
         }
 
-        .ties-row {
-            display: flex;
-            gap: 10px;
-            align-items: flex-end;
+        /* ── ГАЛСТУКИ (М З Л Д) И TELEGRAM ХОВЕР ── */
+        .ties-row { display: flex; gap: 20px; align-items: flex-start; padding-top: 5px; }
+        
+        .tie-item {
+            position: relative; display: flex; flex-direction: column; align-items: center;
+            text-decoration: none; cursor: pointer; perspective: 1000px; z-index: 5;
         }
-
-        /* Beautiful necktie SVG */
+        
         .tie-svg {
-            width: 36px;
-            height: 100px;
-            filter: drop-shadow(0 2px 4px rgba(200,16,46,0.35));
-            transition: transform 0.3s cubic-bezier(.34,1.56,.64,1);
+            width: 54px; height: 170px; overflow: visible;
+            transform-origin: 50% 12%; 
+            animation: tieSwing 4.5s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0 6px 10px rgba(0, 177, 79, 0.25));
         }
-        .tie-svg:hover { transform: rotate(-6deg) scale(1.08); }
-        .tie-svg:nth-child(2) { transform: translateY(4px); }
-        .tie-svg:nth-child(3) { transform: translateY(2px); }
-        .tie-svg:nth-child(4) { transform: translateY(6px); }
-        .tie-svg:nth-child(2):hover { transform: translateY(4px) rotate(5deg) scale(1.08); }
-        .tie-svg:nth-child(3):hover { transform: translateY(2px) rotate(-4deg) scale(1.08); }
-        .tie-svg:nth-child(4):hover { transform: translateY(6px) rotate(6deg) scale(1.08); }
+
+        .tie-item:hover { z-index: 20; }
+        .tie-item:hover .tie-svg {
+            animation-play-state: paused;
+            transform: scale(1.15) rotate(0deg) translateY(-6px) !important;
+            filter: drop-shadow(0 15px 25px rgba(0, 177, 79, 0.6));
+        }
+
+        /* Анимированная плашка с Telegram */
+        .tg-badge {
+            position: absolute;
+            bottom: -35px; /* Сдвинута ниже */
+            background: #111;
+            color: var(--neon-green);
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid var(--neon-green);
+            font-family: 'Hack', monospace;
+            font-weight: 700;
+            font-size: 13px;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(0px) scale(0.8);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 0 15px rgba(148, 228, 102, 0.4);
+            white-space: nowrap;
+        }
+        
+        .tie-item:hover .tg-badge {
+            opacity: 1;
+            transform: translateY(15px) scale(1);
+            pointer-events: auto;
+        }
 
         .header-center { text-align: center; }
-        header h1 {
-            font-family: 'Syne', sans-serif;
-            font-size: 2.8rem;
-            font-weight: 800;
-            letter-spacing: -0.03em;
-            line-height: 1;
-            color: var(--text);
-        }
-        header h1 span { color: var(--red); }
-        header .subtitle {
-            margin-top: 0.6rem;
-            color: var(--muted);
-            font-size: 0.9375rem;
-            font-weight: 300;
-        }
+        header h1 { font-family: 'Hack', monospace; font-size: 2.5rem; font-weight: 700; letter-spacing: -0.05em; line-height: 1; margin-bottom: 0.5rem;}
+        header h1 span { color: var(--primary); }
+        header .subtitle { color: var(--muted); font-size: 1rem; font-family: 'Hack', monospace; }
 
-        .header-badge {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 0.5rem;
-        }
-        .report-label {
-            font-size: 0.7rem;
-            font-weight: 600;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: var(--muted);
-        }
-        .report-date {
-            font-size: 0.8125rem;
-            color: var(--text);
-            font-weight: 500;
-        }
+        .header-badge { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; }
+        .report-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; }
+        .report-date { font-size: 0.85rem; font-weight: 700; }
 
         /* ── STATS GRID ── */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1.25rem;
-            margin-bottom: 2rem;
-        }
-
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin-bottom: 2rem; }
         .stat-card {
-            background: var(--card);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 1.5rem 1.75rem;
-            box-shadow: var(--shadow-sm);
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            animation: slideUp 0.5s ease-out backwards;
+            background: var(--card); border-radius: var(--radius); border: 1px solid var(--border);
+            padding: 1.5rem 1.75rem; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); animation: slideUpFade 0.6s backwards;
         }
-        .stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow);
-        }
-        .stat-card::after {
-            content: '';
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            height: 3px;
-            border-radius: 0 0 var(--radius) var(--radius);
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
+        .stat-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); border-color: var(--primary-light); z-index: 10;}
+        .stat-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 4px; opacity: 0; transition: opacity 0.3s; }
         .stat-card:hover::after { opacity: 1; }
-
-        .stat-card.total::after { background: var(--text); }
+        .stat-card.total::after { background: var(--primary); }
         .stat-card.critical::after { background: var(--red); }
         .stat-card.high::after { background: var(--orange); }
         .stat-card.medium::after { background: var(--blue); }
 
-        .stat-card:nth-child(1) { animation-delay: 0.05s; }
-        .stat-card:nth-child(2) { animation-delay: 0.1s; }
-        .stat-card:nth-child(3) { animation-delay: 0.15s; }
-        .stat-card:nth-child(4) { animation-delay: 0.2s; }
+        .stat-card:nth-child(1) { animation-delay: 0.1s; }
+        .stat-card:nth-child(2) { animation-delay: 0.2s; }
+        .stat-card:nth-child(3) { animation-delay: 0.3s; }
+        .stat-card:nth-child(4) { animation-delay: 0.4s; }
 
-        .stat-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1rem;
-        }
-        .stat-icon svg { width: 18px; height: 18px; }
+        .stat-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem; }
+        .stat-icon svg { width: 18px; height: 18px; animation: float 3s ease-in-out infinite; }
+        .total .stat-icon  { background: var(--primary-light); color: var(--primary); }
+        .critical .stat-icon { background: #FDECEC; color: var(--red); }
+        .high .stat-icon    { background: #FFF3E5; color: var(--orange); }
+        .medium .stat-icon  { background: #EDF2FC; color: var(--blue); }
 
-        .total .stat-icon  { background: #F0F0EE; color: var(--text); }
-        .critical .stat-icon { background: var(--red-light); color: var(--red); }
-        .high .stat-icon    { background: #FFF4EC; color: var(--orange); }
-        .medium .stat-icon  { background: #EEF3FF; color: var(--blue); }
-
-        .stat-label {
-            font-size: 0.8125rem;
-            color: var(--muted);
-            font-weight: 400;
-            margin-bottom: 0.3rem;
-        }
-        .stat-value {
-            font-family: 'Syne', sans-serif;
-            font-size: 2.5rem;
-            font-weight: 700;
-            line-height: 1;
-        }
+        .stat-label { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.3rem; font-weight: 700; }
+        .stat-value { font-size: 2.5rem; font-weight: 700; line-height: 1; }
         .critical .stat-value { color: var(--red); }
         .high .stat-value { color: var(--orange); }
         .medium .stat-value { color: var(--blue); }
 
         /* ── CHARTS ── */
-        .charts-section {
-            display: grid;
-            grid-template-columns: 320px 1fr 1fr;
-            gap: 1.25rem;
-            margin-bottom: 2rem;
-            animation: slideUp 0.5s 0.25s ease-out backwards;
-        }
-
-        .chart-card {
-            background: var(--card);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 1.5rem;
-            box-shadow: var(--shadow-sm);
-        }
-        .chart-card h3 {
-            font-family: 'Syne', sans-serif;
-            font-size: 0.9375rem;
-            font-weight: 700;
-            margin-bottom: 1.25rem;
-            letter-spacing: -0.01em;
-        }
-        .chart-wrap {
-            position: relative;
-            height: 260px;
-        }
+        .charts-section { display: grid; grid-template-columns: 320px 1fr 1fr; gap: 1.25rem; margin-bottom: 2rem; animation: slideUpFade 0.6s 0.3s backwards; }
+        .chart-card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); padding: 1.5rem; box-shadow: var(--shadow-sm); transition: all 0.3s ease; }
+        .chart-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+        .chart-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 1.25rem; color: var(--text); }
+        .chart-wrap { position: relative; height: 260px; }
 
         /* ── FINDINGS ── */
-        .findings-section { animation: slideUp 0.5s 0.35s ease-out backwards; }
-        .section-header {
-            display: flex;
-            align-items: baseline;
-            gap: 0.75rem;
-            margin-bottom: 1.5rem;
-        }
-        .section-header h2 {
-            font-family: 'Syne', sans-serif;
-            font-size: 1.375rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-        }
-        .count-badge {
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: var(--text);
-            color: white;
-            padding: 0.2rem 0.6rem;
-            border-radius: 999px;
-        }
+        .findings-section { animation: slideUpFade 0.6s 0.4s backwards; }
+        .section-header { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1.5rem; }
+        .section-header h2 { font-size: 1.5rem; font-weight: 700; color: #ffffff;} 
+        .count-badge { font-size: 0.8rem; font-weight: 700; background: var(--primary); color: white; padding: 0.2rem 0.6rem; border-radius: 999px; box-shadow: 0 2px 6px rgba(0, 177, 79, 0.4); }
 
-        .finding {
-            background: var(--card);
-            border-radius: var(--radius-sm);
-            margin-bottom: 0.875rem;
-            border: 1px solid var(--border);
-            overflow: hidden;
-            transition: box-shadow 0.2s ease, transform 0.2s ease;
-        }
-        .finding:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
-        }
+        .finding { background: var(--card); border-radius: var(--radius-sm); margin-bottom: 0.875rem; border: 1px solid var(--border); overflow: hidden; transition: all 0.3s ease; animation: slideUpFade 0.5s backwards; }
+        .finding:hover { transform: translateY(-3px) scale(1.005); box-shadow: 0 12px 30px rgba(0,0,0,0.2); border-color: var(--primary-light); z-index: 2; position: relative;}
+        .finding-header { display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--border); }
+        .finding.severity-critical .finding-header { background: #FDECEC; border-left: 4px solid var(--red); }
+        .finding.severity-high .finding-header    { background: #FFF3E5; border-left: 4px solid var(--orange); }
+        .finding.severity-medium .finding-header  { background: #EDF2FC; border-left: 4px solid var(--blue); }
+        .finding.severity-low .finding-header     { background: var(--primary-light); border-left: 4px solid var(--green); }
 
-        .finding-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.875rem 1.25rem;
-            border-bottom: 1px solid var(--border);
-        }
-        .finding.severity-critical .finding-header { background: #FFF8F9; }
-        .finding.severity-high .finding-header    { background: #FFFAF6; }
-        .finding.severity-medium .finding-header  { background: #F6F9FF; }
-        .finding.severity-low .finding-header     { background: #F5FDF8; }
-
-        .rule-name {
-            font-weight: 600;
-            font-size: 0.9375rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .rule-name::before {
-            content: '';
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            flex-shrink: 0;
-        }
-        .severity-critical .rule-name::before { background: var(--red); }
-        .severity-high .rule-name::before     { background: var(--orange); }
-        .severity-medium .rule-name::before   { background: var(--blue); }
-        .severity-low .rule-name::before      { background: var(--green); }
-
-        .sev-pill {
-            font-size: 0.6875rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            padding: 0.25rem 0.75rem;
-            border-radius: 999px;
-            color: white;
-        }
+        .rule-name { font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
+        .sev-pill { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; padding: 0.25rem 0.75rem; border-radius: 999px; color: white; }
         .severity-critical .sev-pill { background: var(--red); }
         .severity-high .sev-pill     { background: var(--orange); }
         .severity-medium .sev-pill   { background: var(--blue); }
         .severity-low .sev-pill      { background: var(--green); }
 
-        .finding-body {
-            padding: 1.25rem;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.75rem 1.5rem;
-        }
-        .finding-field { display: flex; flex-direction: column; gap: 0.2rem; }
+        .finding-body { padding: 1.25rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; }
+        .finding-field { display: flex; flex-direction: column; gap: 0.3rem; }
         .finding-field.full { grid-column: 1 / -1; }
-        .field-label {
-            font-size: 0.7rem;
-            font-weight: 600;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--muted);
-        }
-        .field-value {
-            font-size: 0.8125rem;
-            font-family: 'DM Mono', 'Courier New', monospace;
-            background: var(--bg);
-            padding: 0.35rem 0.6rem;
-            border-radius: 6px;
-            border: 1px solid var(--border);
-            word-break: break-all;
-        }
-        .field-value.secret { color: var(--red); font-weight: 600; }
-        pre.line-content {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            white-space: pre-wrap;
-            word-break: break-all;
-            font-family: 'DM Mono', 'Courier New', monospace;
-            font-size: 0.8rem;
-            line-height: 1.6;
-        }
-        .remediation-box {
-            grid-column: 1 / -1;
-            background: #F0F9FF;
-            border: 1px solid #BAE6FD;
-            border-radius: 8px;
-            padding: 0.75rem 1rem;
-            font-size: 0.8125rem;
-            color: #0C4A6E;
-            display: flex;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-        .remediation-box::before { content: '💡'; flex-shrink: 0; }
+        .field-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; color: var(--muted); text-transform: uppercase; }
+        .field-value { font-size: 0.85rem; background: var(--bg-dark); color: #fff; padding: 0.5rem 0.7rem; border-radius: 6px; border: 1px solid #333; word-break: break-all; }
+        .field-value.secret { color: #ff6b6b; font-weight: 700; }
+        pre.line-content { background: var(--bg-dark); color: #e0e0e0; border: 1px solid #333; padding: 0.8rem 1rem; border-radius: 8px; white-space: pre-wrap; word-break: break-all; font-size: 0.85rem; line-height: 1.6; }
+        
+        .remediation-box { grid-column: 1 / -1; background: var(--primary-light); border: 1px solid #99DFB9; border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.85rem; color: #005C29; display: flex; align-items: flex-start; gap: 0.5rem; }
 
-        /* ── NO FINDINGS ── */
-        .no-findings {
-            text-align: center;
-            padding: 5rem 2rem;
-            background: var(--card);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
+        /* ── FOOTER CROC STYLE WITH NEON HOVER & JUMP ── */
+        footer { margin-top: 4rem; padding-top: 2rem; display: flex; justify-content: center; position: relative; z-index: 10; padding-bottom: 2rem;}
+        
+        .footer-link {
+            text-decoration: none;
+            display: inline-block;
+            transition: transform 0.1s ease; /* Быстрый переход для клика */
         }
-        .no-findings .shield { font-size: 3.5rem; line-height: 1; }
-        .no-findings h3 {
-            font-family: 'Syne', sans-serif;
-            font-size: 1.375rem;
-            font-weight: 700;
-            margin-top: 1rem;
+        
+        .footer-content { 
+            display: flex; align-items: center; gap: 12px; background: var(--card); 
+            padding: 12px 32px; border-radius: 999px; box-shadow: var(--shadow-lg); 
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); border: 1px solid transparent;
         }
-        .no-findings p { color: var(--muted); margin-top: 0.5rem; }
+        
+        .powered-by { font-size: 1rem; color: var(--muted); font-weight: 700; transition: color 0.3s; }
+        .croc-logo { font-size: 1.8rem; font-weight: 700; color: var(--primary); letter-spacing: 0.05em; line-height: 1; margin-top: 2px; transition: all 0.3s; }
+        
+        /* Неоновый эффект при наведении */
+        .footer-link:hover .footer-content { 
+            transform: translateY(-4px) scale(1.05); 
+            box-shadow: 0 0 30px rgba(148, 228, 102, 0.5); 
+            border-color: var(--neon-green);
+            background: #111;
+        }
+        .footer-link:hover .powered-by { color: #fff; }
+        .footer-link:hover .croc-logo { 
+            color: var(--neon-green); 
+            text-shadow: 0 0 15px var(--neon-green), 0 0 30px var(--neon-green);
+        }
 
-        /* ── FOOTER ── */
-        footer {
-            margin-top: 3rem;
-            padding-top: 1.75rem;
-            border-top: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-            color: var(--muted);
-            font-size: 0.8125rem;
-        }
-        footer span { font-weight: 500; }
-        .croc-img {
-            height: 24px;
-            width: auto;
-            object-fit: contain;
-            vertical-align: middle;
-            filter: grayscale(20%);
+        /* Анимация "подпрыгивания" при клике */
+        .footer-link:active .footer-content {
+            transform: translateY(2px) scale(0.95);
+            box-shadow: 0 0 15px rgba(148, 228, 102, 0.3);
+            transition: transform 0.1s ease;
         }
 
         /* ── ANIMATIONS ── */
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(14px); }
-            to   { opacity: 1; transform: translateY(0); }
+        @keyframes slideUpFade { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-4px); } 100% { transform: translateY(0px); } }
+        @keyframes floatSwoosh { from { transform: translate(-50%, -50%) rotate(0deg) scale(1); } to { transform: translate(-52%, -48%) rotate(3deg) scale(1.03); } }
+        @keyframes floatSymbol { 0% { transform: translateY(0) rotate(0deg); opacity: 0.1; } 50% { opacity: 0.3; } 100% { transform: translateY(-100vh) rotate(360deg); opacity: 0.1; } }
+        @keyframes gradientShift { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
+        @keyframes drift { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(150px, 80px) scale(1.2); } }
+        
+        /* Мощная живая анимация галстуков */
+        @keyframes tieSwing {
+            0% { transform: rotate(0deg); }
+            20% { transform: rotate(18deg); }
+            50% { transform: rotate(-14deg); }
+            80% { transform: rotate(10deg); }
+            100% { transform: rotate(0deg); }
         }
 
-        /* ── RESPONSIVE ── */
-        @media (max-width: 1024px) {
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-            .charts-section { grid-template-columns: 1fr 1fr; }
-            .charts-section .chart-card:last-child { grid-column: 1 / -1; }
-        }
-        @media (max-width: 700px) {
-            body { padding: 1rem; }
-            header { grid-template-columns: 1fr; text-align: center; padding: 2rem 1.5rem; }
-            .ties-row, .header-badge { justify-content: center; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-            .charts-section { grid-template-columns: 1fr; }
-            .finding-body { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 1024px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .charts-section { grid-template-columns: 1fr 1fr; } .charts-section .chart-card:last-child { grid-column: 1 / -1; } }
+        @media (max-width: 700px) { header { grid-template-columns: 1fr; text-align: center; } .ties-row, .header-badge { justify-content: center; } .stats-grid { grid-template-columns: 1fr; } .charts-section { grid-template-columns: 1fr; } .finding-body { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
+
+<!-- Анимированный фон (Космос + Зеленая фигура + Хакерские символы) -->
+<div class="bg-elements">
+    <div class="glow-shape glow-1"></div>
+    <div class="glow-shape glow-2"></div>
+    
+    <!-- Центральная зеленая фигура -->
+    <svg class="bg-swoosh" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
+        <path d="M 30,60 C 30,110 60,135 100,135 L 130,135 C 165,135 175,80 145,70 C 120,60 110,95 125,125 C 135,145 155,170 170,185" 
+              fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" color="#94E466"/>
+    </svg>
+
+    <!-- Хакерские символы -->
+    <div class="hacker-symbol sym-1">*</div>
+    <div class="hacker-symbol sym-2">#</div>
+    <div class="hacker-symbol sym-3">&lt;&gt;</div>
+    <div class="hacker-symbol sym-4">{}</div>
+    <div class="hacker-symbol sym-5">*</div>
+    <div class="hacker-symbol sym-6">#</div>
+    <div class="hacker-symbol sym-7">{}</div>
+    <div class="hacker-symbol sym-8">&lt;&gt;</div>
+</div>
+
 <div class="container">
     {% set actual_findings = findings_with_rules|rejectattr('finding.whitelisted')|list %}
 
     <!-- HEADER -->
     <header>
         <div class="ties-row">
-            <!-- Tie 1 -->
-            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="tg1" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#E8192C"/>
-                        <stop offset="100%" style="stop-color:#A00A1C"/>
-                    </linearGradient>
-                </defs>
-                <!-- Knot -->
-                <path d="M20,6 Q30,2 40,6 L44,22 Q30,28 16,22 Z" fill="#C8102E"/>
-                <!-- Neck band shadow -->
-                <rect x="24" y="20" width="12" height="6" rx="2" fill="#9A0B21"/>
-                <!-- Blade -->
-                <path d="M16,24 L24,26 L28,145 L30,155 L32,145 L36,26 L44,24 L38,80 L30,100 L22,80 Z" fill="url(#tg1)"/>
-                <!-- Highlight -->
-                <path d="M29,28 L27,130 L30,152 L30,28 Z" fill="rgba(255,255,255,0.12)"/>
-            </svg>
-            <!-- Tie 2 -->
-            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="tg2" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#D4102A"/>
-                        <stop offset="100%" style="stop-color:#8B0818"/>
-                    </linearGradient>
-                </defs>
-                <path d="M18,8 Q30,3 42,8 L45,24 Q30,30 15,24 Z" fill="#C0102C"/>
-                <rect x="24" y="22" width="12" height="6" rx="2" fill="#8B0818"/>
-                <path d="M15,26 L24,28 L27,148 L30,158 L33,148 L36,28 L45,26 L40,82 L30,102 L20,82 Z" fill="url(#tg2)"/>
-                <path d="M29,30 L27,132 L30,155 L30,30 Z" fill="rgba(255,255,255,0.10)"/>
-            </svg>
-            <!-- Tie 3 -->
-            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="tg3" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#E82035"/>
-                        <stop offset="100%" style="stop-color:#9E0C1E"/>
-                    </linearGradient>
-                </defs>
-                <path d="M19,7 Q30,2 41,7 L44,23 Q30,29 16,23 Z" fill="#C8102E"/>
-                <rect x="24" y="21" width="12" height="6" rx="2" fill="#960B1E"/>
-                <path d="M16,25 L24,27 L28,146 L30,156 L32,146 L36,27 L44,25 L39,81 L30,101 L21,81 Z" fill="url(#tg3)"/>
-                <path d="M29,29 L27,130 L30,153 L30,29 Z" fill="rgba(255,255,255,0.13)"/>
-            </svg>
-            <!-- Tie 4 -->
-            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="tg4" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#DC1428"/>
-                        <stop offset="100%" style="stop-color:#920A1C"/>
-                    </linearGradient>
-                </defs>
-                <path d="M17,9 Q30,4 43,9 L46,25 Q30,31 14,25 Z" fill="#BE0F28"/>
-                <rect x="24" y="23" width="12" height="6" rx="2" fill="#8A0B1A"/>
-                <path d="M14,27 L24,29 L27,147 L30,157 L33,147 L36,29 L46,27 L41,83 L30,103 L19,83 Z" fill="url(#tg4)"/>
-                <path d="M29,31 L27,131 L30,154 L30,31 Z" fill="rgba(255,255,255,0.11)"/>
-            </svg>
+            <!-- Галстук М -->
+            <a href="https://t.me/kelchers" target="_blank" class="tie-item">
+                <svg class="tie-svg" viewBox="0 0 80 180" xmlns="http://www.w3.org/2000/svg" style="animation-delay: 0s;">
+                    <defs>
+                        <linearGradient id="grad_M" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#33D67A"></stop>
+                            <stop offset="100%" style="stop-color:#008A3E"></stop>
+                        </linearGradient>
+                        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="rgba(0,0,0,0.15)"></feDropShadow>
+                        </filter>
+                    </defs>
+                    <path d="M 33,30 L 47,30 L 58,135 L 40,165 L 22,135 Z" fill="url(#grad_M)"></path>
+                    <path d="M 28,15 L 52,15 L 47,35 L 33,35 Z" fill="#33D67A"></path>
+                    <path d="M 34,35 L 40,155 L 44,35 Z" fill="rgba(255,255,255,0.15)"></path>
+                    <path d="M -5,0 L 38,18 L 18,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <path d="M 85,0 L 42,18 L 62,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <text x="40" y="145" fill="#fff" font-family="'Hack', monospace" font-size="28" font-weight="700" text-anchor="middle">М</text>
+                </svg>
+                <div class="tg-badge">@kelchers</div>
+            </a>
+            
+            <!-- Галстук З -->
+            <a href="https://t.me/Aenty" target="_blank" class="tie-item">
+                <svg class="tie-svg" viewBox="0 0 80 180" xmlns="http://www.w3.org/2000/svg" style="animation-delay: -0.7s;">
+                    <defs>
+                        <linearGradient id="grad_Z" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#26C268"></stop>
+                            <stop offset="100%" style="stop-color:#007A33"></stop>
+                        </linearGradient>
+                    </defs>
+                    <path d="M 33,30 L 47,30 L 58,135 L 40,165 L 22,135 Z" fill="url(#grad_Z)"></path>
+                    <path d="M 28,15 L 52,15 L 47,35 L 33,35 Z" fill="#26C268"></path>
+                    <path d="M 34,35 L 40,155 L 44,35 Z" fill="rgba(255,255,255,0.15)"></path>
+                    <path d="M -5,0 L 38,18 L 18,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <path d="M 85,0 L 42,18 L 62,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <text x="40" y="145" fill="#fff" font-family="'Hack', monospace" font-size="28" font-weight="700" text-anchor="middle">З</text>
+                </svg>
+                <div class="tg-badge">@Aenty</div>
+            </a>
+            
+            <!-- Галстук Л -->
+            <a href="https://t.me/levvaaivazian" target="_blank" class="tie-item">
+                <svg class="tie-svg" viewBox="0 0 80 180" xmlns="http://www.w3.org/2000/svg" style="animation-delay: -1.4s;">
+                    <defs>
+                        <linearGradient id="grad_L" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#4AE08B"></stop>
+                            <stop offset="100%" style="stop-color:#00994A"></stop>
+                        </linearGradient>
+                    </defs>
+                    <path d="M 33,30 L 47,30 L 58,135 L 40,165 L 22,135 Z" fill="url(#grad_L)"></path>
+                    <path d="M 28,15 L 52,15 L 47,35 L 33,35 Z" fill="#4AE08B"></path>
+                    <path d="M 34,35 L 40,155 L 44,35 Z" fill="rgba(255,255,255,0.15)"></path>
+                    <path d="M -5,0 L 38,18 L 18,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <path d="M 85,0 L 42,18 L 62,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <text x="40" y="145" fill="#fff" font-family="'Hack', monospace" font-size="28" font-weight="700" text-anchor="middle">Л</text>
+                </svg>
+                <div class="tg-badge">@levvaaivazian</div>
+            </a>
+            
+            <!-- Галстук Д -->
+            <a href="https://t.me/StrongCoder8" target="_blank" class="tie-item">
+                <svg class="tie-svg" viewBox="0 0 80 180" xmlns="http://www.w3.org/2000/svg" style="animation-delay: -2.1s;">
+                    <defs>
+                        <linearGradient id="grad_D" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#1EAD56"></stop>
+                            <stop offset="100%" style="stop-color:#006B29"></stop>
+                        </linearGradient>
+                    </defs>
+                    <path d="M 33,30 L 47,30 L 58,135 L 40,165 L 22,135 Z" fill="url(#grad_D)"></path>
+                    <path d="M 28,15 L 52,15 L 47,35 L 33,35 Z" fill="#1EAD56"></path>
+                    <path d="M 34,35 L 40,155 L 44,35 Z" fill="rgba(255,255,255,0.15)"></path>
+                    <path d="M -5,0 L 38,18 L 18,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <path d="M 85,0 L 42,18 L 62,50 Z" fill="#FFFFFF" filter="url(#shadow)"></path>
+                    <text x="40" y="145" fill="#fff" font-family="'Hack', monospace" font-size="28" font-weight="700" text-anchor="middle">Д</text>
+                </svg>
+                <div class="tg-badge">@StrongCoder8</div>
+            </a>
         </div>
 
         <div class="header-center">
             <h1>Белые <span>воротнички</span></h1>
-            <p class="subtitle">{{ title }}</p>
+            <p class="subtitle">Отчет по анализу безопасности</p>
         </div>
 
         <div class="header-badge">
@@ -554,7 +486,7 @@
         </div>
 
         {% if not actual_findings %}
-        <div class="no-findings">
+        <div class="no-findings" style="animation: slideUpFade 0.6s ease-out;">
             <div class="shield">🛡️</div>
             <h3>Секреты не обнаружены</h3>
             <p>Потенциальные утечки не найдены. Отличная работа!</p>
@@ -562,7 +494,7 @@
         {% endif %}
 
         {% for item in actual_findings %}
-        <div class="finding severity-{{ item.finding.severity|lower }}">
+        <div class="finding severity-{{ item.finding.severity|lower }}" style="animation-delay: {{ loop.index0 * 0.05 + 0.2 }}s;">
             <div class="finding-header">
                 <span class="rule-name">{{ item.finding.rule_name }}</span>
                 <span class="sev-pill">{{ item.finding.severity }}</span>
@@ -592,16 +524,14 @@
         {% endfor %}
     </div>
 
-    <!-- FOOTER -->
+    <!-- ИНТЕРАКТИВНЫЙ ФУТЕР КРОК -->
     <footer>
-        <span>Powered by</span>
-        <img
-            class="croc-img"
-            src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/CROC_Incorporated.png/250px-CROC_Incorporated.png"
-            alt="КРОК"
-            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';"
-        />
-        <span style="display:none; font-weight:700; letter-spacing:0.05em;">КРОК</span>
+        <a href="https://www.croc.ru/?ysclid=mmg9vo4xn5375308953" target="_blank" class="footer-link">
+            <div class="footer-content">
+                <span class="powered-by">Powered by</span>
+                <span class="croc-logo">КРОК</span>
+            </div>
+        </a>
     </footer>
 </div>
 
@@ -610,9 +540,20 @@
 document.addEventListener("DOMContentLoaded", function () {
     try {
         const stats = {{ stats | tojson | safe }};
-        const font = { family: 'DM Sans', size: 12 };
+        const font = { family: 'Hack', size: 12 };
+        
+        const chartOptions = {
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 1500, easing: 'easeOutQuart' },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                tooltip: {
+                    backgroundColor: 'rgba(26, 26, 26, 0.95)', titleFont: { size: 14, family: 'Hack' },
+                    bodyFont: { size: 13, family: 'Hack' }, padding: 12, cornerRadius: 8
+                }
+            }
+        };
 
-        // 1. Doughnut — severity
         const sCtx = document.getElementById('severityChart');
         if (sCtx) {
             new Chart(sCtx, {
@@ -620,33 +561,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 data: {
                     labels: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
                     datasets: [{
-                        data: [
-                            stats.by_severity.CRITICAL,
-                            stats.by_severity.HIGH,
-                            stats.by_severity.MEDIUM,
-                            stats.by_severity.LOW
-                        ],
-                        backgroundColor: ['#C8102E', '#E8610A', '#1A56DB', '#0A7A4B'],
-                        borderColor: '#FFFFFF',
-                        borderWidth: 4,
-                        hoverOffset: 8
+                        data: [stats.by_severity.CRITICAL, stats.by_severity.HIGH, stats.by_severity.MEDIUM, stats.by_severity.LOW],
+                        backgroundColor: ['#E63946', '#FF7A00', '#1A56DB', '#00B14F'],
+                        borderColor: '#FFFFFF', borderWidth: 4, hoverOffset: 12
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '72%',
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { font, padding: 14, boxWidth: 12, boxHeight: 12, borderRadius: 3 }
-                        }
-                    }
-                }
+                options: { ...chartOptions, cutout: '72%', plugins: { ...chartOptions.plugins, legend: { position: 'bottom', labels: { font, padding: 14, boxWidth: 12, boxHeight: 12, borderRadius: 3 } } } }
             });
         }
 
-        // 2. Bar — top rules
         const rCtx = document.getElementById('rulesChart');
         if (rCtx && Object.keys(stats.top_rules).length > 0) {
             new Chart(rCtx, {
@@ -655,70 +578,32 @@ document.addEventListener("DOMContentLoaded", function () {
                     labels: Object.keys(stats.top_rules),
                     datasets: [{
                         data: Object.values(stats.top_rules),
-                        backgroundColor: [
-                            'rgba(200,16,46,0.85)',
-                            'rgba(232,97,10,0.85)',
-                            'rgba(26,86,219,0.85)',
-                            'rgba(10,122,75,0.85)',
-                            'rgba(124,58,237,0.85)'
-                        ],
-                        borderRadius: 6,
-                        borderSkipped: false
+                        backgroundColor: ['#00B14F', '#FF7A00', '#1A56DB', '#E63946', '#9747FF'],
+                        borderRadius: 6, borderSkipped: false
                     }]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: { font, maxRotation: 25 }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#F0EEE8', drawBorder: false },
-                            ticks: { font, precision: 0 }
-                        }
-                    }
+                    ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } },
+                    scales: { x: { grid: { display: false }, ticks: { font, maxRotation: 25 } }, y: { beginAtZero: true, grid: { color: '#E0E6E2', drawBorder: false }, ticks: { font, precision: 0 } } }
                 }
             });
         }
 
-        // 3. Horizontal bar — top files
         const fCtx = document.getElementById('filesChart');
         if (fCtx && Object.keys(stats.top_files).length > 0) {
             new Chart(fCtx, {
                 type: 'bar',
                 data: {
-                    labels: Object.keys(stats.top_files).map(l =>
-                        l.length > 32 ? '…' + l.slice(-29) : l
-                    ),
+                    labels: Object.keys(stats.top_files).map(l => l.length > 32 ? '…' + l.slice(-29) : l),
                     datasets: [{
                         data: Object.values(stats.top_files),
-                        backgroundColor: 'rgba(200,16,46,0.12)',
-                        borderColor: 'rgba(200,16,46,0.8)',
-                        borderWidth: 1.5,
-                        borderRadius: 4,
-                        borderSkipped: false
+                        backgroundColor: 'rgba(0, 177, 79, 0.15)', hoverBackgroundColor: 'rgba(0, 177, 79, 0.3)',
+                        borderColor: 'rgba(0, 177, 79, 0.9)', borderWidth: 1.5, borderRadius: 4, borderSkipped: false
                     }]
                 },
                 options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: {
-                            beginAtZero: true,
-                            grid: { color: '#F0EEE8', drawBorder: false },
-                            ticks: { font, precision: 0 }
-                        },
-                        y: {
-                            grid: { display: false },
-                            ticks: { font }
-                        }
-                    }
+                    indexAxis: 'y', ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } },
+                    scales: { x: { beginAtZero: true, grid: { color: '#E0E6E2', drawBorder: false }, ticks: { font, precision: 0 } }, y: { grid: { display: false }, ticks: { font } } }
                 }
             });
         }

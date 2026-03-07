@@ -33,7 +33,7 @@ rules:
   - id: GENERIC_KEYWORD_SECRET_12
     name: "Generic Secret by Keyword (12+ chars)"
     pattern: >-
-      (?i)\b(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["']([a-zA-Z0-9\-\_!@#$%^&*()]{12,})["']
+      (?i)\b(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["']?([a-zA-Z0-9\-\_!@#$%^&*()]{12,})["']?
     severity: MEDIUM
     description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит строку длиной 12+ символов."
     remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
@@ -41,7 +41,7 @@ rules:
   - id: GENERIC_KEYWORD_SECRET_20
     name: "Generic Secret by Keyword (20+ chars)"
     pattern: >-
-      (?i)\b(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["']([a-zA-Z0-9\-\_!@#$%^&*()]{20,})["']
+      (?i)\b(?:key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["']?([a-zA-Z0-9\-\_!@#$%^&*()]{20,})["']?
     severity: HIGH
     description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит длинную строку (20+ символов)."
     remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
@@ -212,7 +212,7 @@ rules:
 
   - id: YOOKASSA_SECRET_KEY
     name: "YooKassa (ЮКасса) Secret Key"
-    pattern: '(?:live|test)_[a-zA-Z0-9\-:]{20,}'
+    pattern: '(?:live|test)\_[a-zA-Z0-9\_\-:]{20,}'
     severity: CRITICAL
     description: "Обнаружен секретный ключ ЮКасса. Позволяет проводить и отменять платежи."
     remediation: "Немедленно отзовите ключ в личном кабинете ЮКасса."
@@ -291,7 +291,7 @@ rules:
   # SMS-ШЛЮЗЫ И ТЕЛЕКОМ
   # ===========================================================================
   - id: SMSRU_API_ID
-    name: "SMS.ru API ID"
+     name: "SMS.ru API ID"
     pattern: '(?i)(?:sms[\_\-]?ru|smsru)[\_\-]?(?:api[\_\-]?id|key|token)\s*[:=]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
     severity: HIGH
     description: "Обнаружен API ID сервиса SMS.ru (UUID-формат)."
@@ -580,38 +580,4 @@ rules:
     pattern: '(?:handler|_core_h)\s*->\s*token\s*=\s*strdup\(token\)'
     severity: INFO
     description: "False positive. Копирование токена из параметра функции, не hardcoded секрет."
-    remediation: "Игнорировать."
-    
-  - id: TELEBOT_SUPPRESS_FP_CREDENTIALS_SECRET
-    name: "[SUPPRESS] credentials->secret false positive"
-    pattern: 'credentials\s*->\s*secret\s*=\s*(?:TELEBOT_SAFE_STRDUP|strdup_s)\s*\('
-    severity: INFO
-    description: "False positive. Runtime значение из JSON, не hardcoded секрет."
-    remediation: "Игнорировать."
-  - id: TELEBOT_SUPPRESS_FP_FILENAME_TOKEN
-    name: "[SUPPRESS] strdup(FILENAME_TOKEN) false positive"
-    pattern: 'strdup\s*\(\s*FILENAME_TOKEN\s*\)'
-    severity: INFO
-    description: "False positive. Копирование имени файла-константы, не секрет."
-    remediation: "Игнорировать."
-
-  - id: TELEBOT_SUPPRESS_FP_CONCAT_FILENAME
-    name: "[SUPPRESS] concatFilename false positive"
-    pattern: 'concatFilename\s*\('
-    severity: INFO
-    description: "False positive. Склейка пути к файлу, не секрет."
-    remediation: "Игнорировать."
-
-  - id: TELEBOT_SUPPRESS_FP_FILENAME_TOKEN
-    name: "[SUPPRESS] strdup(FILENAME_TOKEN) false positive"
-    pattern: 'strdup\s*\(\s*FILENAME_TOKEN\s*\)'
-    severity: INFO
-    description: "False positive. Копирование имени файла-константы, не секрет."
-    remediation: "Игнорировать."
-
-  - id: TELEBOT_SUPPRESS_FP_CONCAT_FILENAME
-    name: "[SUPPRESS] concatFilename false positive"
-    pattern: 'concatFilename\s*\('
-    severity: INFO
-    description: "False positive. Склейка пути к файлу, не секрет."
     remediation: "Игнорировать."

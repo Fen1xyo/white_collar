@@ -127,10 +127,8 @@ class EntropyDetector(BaseDetector):
 
         has_keyword = bool(_KEYWORD_RE.search(content))
 
-        # ── Режим 1: строка содержит секретное ключевое слово ─────────────────
         if has_keyword:
             for match in _QUOTED_VALUE_RE.finditer(content):
-                # Группа 1 — двойные кавычки, группа 2 — одинарные
                 candidate = match.group(1) if match.group(1) is not None else match.group(2)
                 if candidate in seen:
                     continue
@@ -147,7 +145,6 @@ class EntropyDetector(BaseDetector):
                         line_content=content.strip(),
                     ))
 
-        # ── Режим 2: очень длинная строка без ключевого слова ─────────────────
         for match in _BARE_LONG_STRING_RE.finditer(content):
             candidate = match.group(1) if match.group(1) is not None else match.group(2)
             if candidate in seen:

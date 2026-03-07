@@ -16,7 +16,7 @@ class FileWalker:
         """ Внутренний метод для проверки, нужно ли сканировать файл. """
         basename = os.path.basename(filename).lower()
         ext = os.path.splitext(filename)[1].lower()
-        return basename in self.scan_extensions or ext in self.scan_extensions
+        return basename in self.scan_extensions or ext in self.scan_extensions or (ext == "" and "." not in basename)
 
     def walk_files(self) -> Generator[str, None, None]:
         """ Обходит директорию проекта и возвращает пути к файлам для сканирования. """
@@ -50,6 +50,9 @@ class FileWalker:
                 # Рекурсивно обходим все файлы в дереве коммита
                 for blob in commit.tree.traverse():
                     if blob.type == 'blob' and blob.hexsha not in scanned_blobs:
+                        parts = blob.path.replace("\\", "/").split("/")
+                        if any(p in self.exclude_dirs for p in parts):
+                            continue
                         if self._should_scan_file(blob.path):
                             scanned_blobs.add(blob.hexsha)
                             try:

@@ -1,21 +1,16 @@
-# scanner/parsers/python_parser.py
-
+# secret-scanner/scanner/parsers/python_parser.py
 import ast
 import re
 import sys
-from typing import List, Dict, Union, Any, Optional  # ИСПРАВЛЕНО: добавлен Optional
-
+from typing import List, Dict, Union, Any, Optional
 import chardet
-
 from .base import BaseParser
-
 
 class SecretReconstructor(ast.NodeVisitor):
     """
     Продвинутый AST Visitor — отслеживает присваивания переменных и
-    реконструирует строки, собранные из частей (конкатенация, f-строки).
+    реконструирует значения, собранные из частей (конкатенация, f-строки, числа).
     """
-
     def __init__(self, file_path: str):
         self.file_path = file_path
         self.symbol_table: Dict[str, Any] = {}
@@ -24,8 +19,11 @@ class SecretReconstructor(ast.NodeVisitor):
     def _evaluate_node(self, node: ast.AST) -> Any:
         if isinstance(node, ast.Constant):
             return node.value
-        if sys.version_info < (3, 8) and isinstance(node, ast.Str):
-            return node.s
+        if sys.version_info < (3, 8):
+            if isinstance(node, ast.Str):
+                return node.s
+            if isinstance(node, ast.Num):
+                return node.n
         if isinstance(node, ast.Name):
             return self.symbol_table.get(node.id)
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
@@ -37,23 +35,47 @@ class SecretReconstructor(ast.NodeVisitor):
                 except TypeError:
                     return None
         if isinstance(node, ast.JoinedStr):
-            parts = [self._evaluate_node(v) for v in node.values]
-            if all(p is not None for p in parts):
-                return "".join(map(str, parts))
+            parts = []
+            for value in node.values:
+                if isinstance(value, ast.Constant):
+                    parts.append(str(value.value))
+                elif isinstance(value, ast.FormattedValue):
+                    eval_val = self._evaluate_node(value.value)
+                    if eval_val is not None:
+                        parts.append(str(eval_val))
+            return "".join(parts)
         if isinstance(node, ast.FormattedValue):
             return self._evaluate_node(node.value)
         return None
 
     def visit_Assign(self, node: ast.Assign):
         value = self._evaluate_node(node.value)
-        if value is not None:
+        # ИСПРАВЛЕНО: Теперь обрабатываем строки и числа
+        if value is not None and isinstance(value, (str, int, float)):
+            str_value = str(value)
+            if not str_value:
+                self.generic_visit(node)
+                return
+
             for target in node.targets:
+                var_name = None
                 if isinstance(target, ast.Name):
-                    self.symbol_table[target.id] = value
+                    var_name = target.id
+                elif isinstance(target, ast.Attribute):
+                    var_name = target.attr
+
+                if var_name:
+                    self.symbol_table[var_name] = value
+                    
+                    # ИСПРАВЛЕНО: Создаем "нормализованную" строку, понятную для regex.
+                    # Всегда оборачиваем итоговое значение в кавычки.
+                    import json
+                    fake_line = f'{var_name} = {json.dumps(str_value)}'
+                    
                     self.tokens.append({
-                        "value": str(value),
+                        "value": fake_line,
                         "line": node.lineno,
-                        "file": self.file_path
+                        "file": self.file_path,
                     })
         self.generic_visit(node)
 
@@ -66,7 +88,7 @@ class SecretReconstructor(ast.NodeVisitor):
             })
         self.generic_visit(node)
 
-    def visit_Str(self, node: ast.Str):  # Python < 3.8
+    def visit_Str(self, node: ast.Str):
         if isinstance(node.s, str):
             self.tokens.append({
                 "value": node.s,
@@ -78,10 +100,8 @@ class SecretReconstructor(ast.NodeVisitor):
     def get_tokens(self) -> List[Dict]:
         return self.tokens
 
-
 class PythonParser(BaseParser):
     """Продвинутый парсер для Python с поддержкой AST и cp1251."""
-
     CODING_RE = re.compile(br'^\s*#.*?coding[:=]\s*([-\w.]+)')
 
     def _detect_encoding(self, raw_bytes: bytes) -> str:
@@ -112,12 +132,12 @@ class PythonParser(BaseParser):
             source = raw_bytes.decode('utf-8', errors='replace')
 
         all_tokens = []
-        tree: Optional[ast.AST] = None  # ИСПРАВЛЕНО: теперь Optional импортирован
-
+        tree: Optional[ast.AST] = None
         try:
             tree = ast.parse(source, filename=file_path)
-        except SyntaxError:
-            pass
+        except SyntaxError as e:
+            print(f"Предупреждение: синтаксическая ошибка в {file_path}, используется построчный анализ. Ошибка: {e}")
+            return self._fallback_line_scan(source, file_path)
 
         if tree:
             visitor = SecretReconstructor(file_path)
@@ -125,9 +145,14 @@ class PythonParser(BaseParser):
             all_tokens.extend(visitor.get_tokens())
 
         all_tokens.extend(self._fallback_line_scan(source, file_path))
-
-        unique_tokens = list({(d['value'], d['line']): d for d in all_tokens}.values())
-        return unique_tokens
+        
+        unique_tokens_map = {}
+        for token in all_tokens:
+            key = (token['line'], token['value'])
+            if key not in unique_tokens_map:
+                unique_tokens_map[key] = token
+        
+        return list(unique_tokens_map.values())
 
     def _fallback_line_scan(self, source: str, file_path: str) -> List[Dict]:
         return [
