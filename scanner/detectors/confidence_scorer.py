@@ -1,43 +1,48 @@
 # scanner/detectors/confidence_scorer.py
-
 import re
 from ..core.finding import Finding
-
 
 class ConfidenceScorer:
     """
     Модуль для оценки уверенности [0.0-1.0] для каждой находки.
     """
-
     TEST_PATH_RE = re.compile(
-        r'[/\\](tests?|fixtures|__tests__)[/\\]|test_.*\.py|.*_test\.py', re.I
+        r'[/\\\\](tests?|fixtures|__tests__)[/\\\\]|test_.*\.py|.*_test\.py', re.I
     )
     EXAMPLE_VALUES_RE = re.compile(
-        # ИСПРАВЛЕНО: убрано слово 'example', т.к. оно присутствует в легитимных
-        # тестовых токенах AWS (AKIAIOSFODNN7EXAMPLE) и вызывало ложный штраф.
         r'\btest\b|placeholder|dummy|your_?|fake|mock|sample|replace|changeme|xxx',
         re.I
     )
-    DOCS_PATH_RE = re.compile(r'[/\\](docs?|examples?)[/\\]|README', re.I)
+    DOCS_PATH_RE = re.compile(r'[/\\\\](docs?|examples?)[/\\\\]|README', re.I)
     COMMENT_LINE_RE = re.compile(r'^\s*#')
 
-    # ИСПРАВЛЕНО: добавлены BITRIX_WEBHOOK и GENERIC_API_KEY —
-    # оба правила давали находки, но не получали бонус +0.40 за специфичность,
-    # из-за чего итоговый score не преодолевал порог фильтрации.
     SPECIFIC_RULE_IDS = {
-        'YANDEX_CLOUD_IAM_TOKEN',
-        'YANDEX_CLOUD_API_KEY',
-        'VK_API_TOKEN',
-        'TELEGRAM_BOT_TOKEN',
-        'AWS_ACCESS_KEY',
-        'GITHUB_TOKEN',
-        'PRIVATE_KEY',
-        'BITRIX_WEBHOOK',
-        'GENERIC_API_KEY',
+        'AWS_ACCESS_KEY', 'GITHUB_TOKEN', 'PRIVATE_KEY',
+        'YANDEX_CLOUD_IAM_TOKEN', 'YANDEX_CLOUD_API_KEY',
+        'VK_API_TOKEN', 'TELEGRAM_BOT_TOKEN', 'BITRIX_WEBHOOK',
+        'GENERIC_API_KEY', 'SELECTEL_API_TOKEN', 'VK_CLOUD_TOKEN', 
+        'TIMEWEB_CLOUD_TOKEN', 'BEGET_API_KEY', 'REGRU_API_KEY', 
+        'CROC_CLOUD_TOKEN', 'SBERCLOUD_TOKEN', 'YOOMONEY_SECRET_KEY', 
+        'YOOKASSA_SECRET_KEY', 'TINKOFF_SECRET_KEY', 'QIWI_API_TOKEN', 
+        'CLOUDPAYMENTS_API_KEY', 'ROBOKASSA_MERCHANT_PASSWORD',
+        'SBERBANK_MERCHANT_TOKEN', 'ALFA_BANK_TOKEN', 'PAYMASTER_SECRET',
+        'MODULBANK_API_KEY', 'TOCHKA_BANK_API_KEY', 'LIQPAY_PRIVATE_KEY',
+        'SMSRU_API_ID', 'SMSC_CREDENTIALS', 'SMSAERO_API_KEY',
+        'MTS_EXOLVE_API_KEY', 'DEVINO_API_KEY', 'YANDEX_MAPS_API_KEY', 
+        'TWOGIS_API_KEY', 'YANDEX_METRIKA_TOKEN', 'APPMETRICA_API_KEY',
+        'DADATA_API_KEY', 'DIADOC_API_KEY', 'KONTUR_EXTERN_API_KEY',
+        'SBIS_API_TOKEN', 'KONTUR_FOCUS_API_KEY', 'AMOCRM_ACCESS_TOKEN', 
+        'RETAILCRM_API_KEY', 'PLANFIX_API_KEY', 'BITRIX24_OAUTH_TOKEN',
+        'UNISENDER_API_KEY', 'SENDPULSE_SECRET', 'SENDSAY_API_KEY', 'MAILRU_API_TOKEN',
+        'HEADHUNTER_API_TOKEN', 'AVITO_CLIENT_SECRET', 'CDEK_ACCOUNT_CREDENTIALS',
+        'WILDBERRIES_API_KEY', 'OZON_API_KEY', 'YANDEX_MARKET_API_TOKEN',
+        'ESIA_TOKEN', 'NALOG_RU_API_TOKEN', 'YANDEX_LOCKBOX_SECRET',
+        'CLICKHOUSE_CLOUD_KEY', 'ISPMANAGER_API_KEY',
+        'SMART_TECHNOLOGIES_API', 'JIRA_CONFLUENCE_RU_TOKEN',
     }
-
     KEYWORD_RE = re.compile(
-        r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token)',
+        r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token'
+        r'|webhook|credential|private|client_secret|bearer)',
         re.I
     )
 
@@ -48,36 +53,30 @@ class ConfidenceScorer:
         score = 0.5  # Базовая оценка
 
         # --- Применяем факторы СНИЖЕНИЯ ---
-        if self.TEST_PATH_RE.search(finding.file_path):
-            score -= 0.35
+
+        # ИСПРАВЛЕНИЕ: Закомментирована строка, которая сильно занижала оценку для тестовых файлов.
+        # Теперь сканер будет находить утечки в тестах с той же эффективностью, что и в основном коде.
+        # if self.TEST_PATH_RE.search(finding.file_path):
+        #     score -= 0.35
 
         if self.EXAMPLE_VALUES_RE.search(finding.secret):
             score -= 0.30
-
         if len(finding.secret) < 12 and finding.rule_id == 'GENERIC_API_KEY':
             score -= 0.20
-
         if self.DOCS_PATH_RE.search(finding.file_path):
             score -= 0.25
-
-        # Значительно снижаем уверенность, если находка находится в строке-комментарии.
-        # Это отсеивает закомментированные секреты (например, # OLD_KEY = "...").
         if self.COMMENT_LINE_RE.search(finding.line_content):
             score -= 0.40
 
         # --- Применяем факторы ПОВЫШЕНИЯ ---
         if finding.rule_id in self.SPECIFIC_RULE_IDS:
             score += 0.40
-
         if finding.rule_id == 'HIGH_ENTROPY_STRING':
             score += 0.25
-
-        # ИСПРАВЛЕНО: теперь line_content содержит полную строку кода (с именем
-        # переменной), поэтому KEYWORD_RE корректно срабатывает на слова
-        # 'token', 'key', 'password' и т.д. в именах переменных.
         if self.KEYWORD_RE.search(finding.line_content):
             score += 0.20
-
+        
+        # Этот бонус можно оставить, он повышает уверенность для не-тестовых файлов.
         if not self.TEST_PATH_RE.search(finding.file_path):
             score += 0.10
 

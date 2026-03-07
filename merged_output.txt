@@ -225,14 +225,12 @@ if __name__ == "__main__":
 # ============================================================
 
 # secret-scanner/cli/main.py
-
 import argparse
 import os
 import sys
 import yaml
 from typing import List, Dict, Any
 
-# Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from scanner.core.engine import ScanEngine
@@ -242,7 +240,9 @@ from scanner.reporters.html_reporter import HTMLReporter
 from scanner.rules.rule_loader import RuleLoader
 
 def main():
-    """ Главная функция, точка входа для CLI. """
+    """
+    Главная функция, точка входа для CLI.
+    """
     parser = argparse.ArgumentParser(
         description="🔍 Secret Scanner v2.0 — Поиск захардкоженных секретов в коде и истории Git.",
         formatter_class=argparse.RawTextHelpFormatter
@@ -262,17 +262,25 @@ def main():
         "--min-confidence",
         type=float,
         default=0.4,
-        help="Минимальный уровень уверенности для отображения находок [0.0-1.0].\n"
-             "Рекомендуемые значения:\n"
-             " 0.0 - показать всё\n"
-             " 0.4 - средний уровень (по умолчанию)\n"
-             " 0.7 - только находки с высокой уверенностью."
+        help=(
+            "Минимальный уровень уверенности для отображения находок [0.0-1.0].\n"
+            "Рекомендуемые значения:\n"
+            "  0.0 - показать всё\n"
+            "  0.4 - средний уровень (по умолчанию)\n"
+            "  0.7 - только находки с высокой уверенностью."
+        )
     )
     parser.add_argument(
         "--no-ru-rules",
         action='store_true',
-        help="Исключить из сканирования правила для российских сервисов."
+        help="Исключить из сканирования базовые правила для российских сервисов."
     )
+    # Аргумент --no-ru-extended больше не нужен, так как все правила в одном файле
+    # parser.add_argument(
+    #     "--no-ru-extended",
+    #     action='store_true',
+    #     help="Исключить расширенный набор правил для российских сервисов (ru_extended_rules.yaml)."
+    # )
     parser.add_argument(
         "--scan-git",
         action='store_true',
@@ -289,22 +297,27 @@ def main():
         with open(os.path.join(config_dir, 'settings.yaml'), 'r', encoding='utf-8') as f:
             config: Dict[str, Any] = yaml.safe_load(f)
 
+        # --- ИСПРАВЛЕННАЯ ЛОГИКА ЗАГРУЗКИ ПРАВИЛ ---
         rule_paths = [os.path.join(config_dir, 'default_rules.yaml')]
         if not args.no_ru_rules:
             rule_paths.append(os.path.join(config_dir, 'ru_rules.yaml'))
-        config['rule_paths'] = rule_paths
+        
+        # Блок для ru_extended_rules.yaml удален, так как он не используется.
 
+        config['rule_paths'] = rule_paths
         engine = ScanEngine(config)
         findings = engine.run(args.path, args.scan_git)
 
-        # ИСПРАВЛЕНО: Корректная обработка confidence, включая 0.0
-        final_findings = [f for f in findings if (f.confidence if f.confidence is not None else 0.5) >= args.min_confidence]
+        final_findings = [
+            f for f in findings
+            if (f.confidence if f.confidence is not None else 0.5) >= args.min_confidence
+        ]
 
         rules = RuleLoader(config['rule_paths']).load_rules()
         reporters = {
             'console': ConsoleReporter(rules),
-            'json': JSONReporter(rules),
-            'html': HTMLReporter(rules)
+            'json':    JSONReporter(rules),
+            'html':    HTMLReporter(rules),
         }
         reporter = reporters[args.report_format]
         reporter.generate_report(final_findings, args.output_file)
@@ -362,14 +375,231 @@ rules:
 # FILE: config/ru_rules.yaml
 # ============================================================
 
-# config/ru_rules.yaml
+# =============================================================================
+# all_rules.yaml
+# Единый файл со всеми правилами сканера секретов.
+# Содержит: универсальные правила + российские сервисы (59 правил).
+# =============================================================================
 
 rules:
+
+  - id: GENERIC_KEYWORD_SECRET_12
+    name: "Generic Secret by Keyword (12+ chars)"
+    # Ищет любое слово-ключ (key, token, password, secret, auth, oauth и т.д.) в имени переменной,
+    # которой присваивается любая строка длиной 12 и более символов.
+    pattern: '(?i)(key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["'']([a-zA-Z0-9\-_!@#$%^&*()]{12,})["'']'
+    severity: MEDIUM
+    description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит строку длиной 12+ символов."
+    remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
+
+  - id: GENERIC_KEYWORD_SECRET_20
+    name: "Generic Secret by Keyword (20+ chars)"
+    # То же самое, но для строк длиной 20+ символов. Более высокая критичность.
+    pattern: '(?i)(key|secret|token|password|passwd|auth|oauth|credential|bearer)\w*\s*[:=]\s*["'']([a-zA-Z0-9\-_!@#$%^&*()]{20,})["'']'
+    severity: HIGH
+    description: "Обнаружена потенциальная утечка: переменная с 'секретным' именем содержит длинную строку (20+ символов)."
+    remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
+  # ===========================================================================
+  # УНИВЕРСАЛЬНЫЕ ПРАВИЛА
+  # ===========================================================================
+
+  - id: AWS_ACCESS_KEY
+    name: "AWS Access Key ID"
+    pattern: 'AKIA[0-9A-Z]{16}'
+    severity: CRITICAL
+    description: "Обнаружен AWS Access Key ID. Этот ключ является частью учетных данных AWS и может предоставить доступ к ресурсам облака."
+    remediation: "Немедленно отозвать ключ в консоли AWS IAM. Для аутентификации приложений использовать IAM-роли или переменные окружения."
+
+  - id: GITHUB_TOKEN
+    name: "GitHub Token"
+    pattern: 'ghp_[a-zA-Z0-9]{36}'
+    severity: CRITICAL
+    description: "Обнаружен персональный токен доступа (PAT) GitHub."
+    remediation: "Немедленно отозвать токен в настройках профиля GitHub (Settings → Developer settings → Personal access tokens). Храните токены в секрет-менеджерах."
+
+  - id: GENERIC_API_KEY
+    name: "Generic API Key"
+    # Первая группа незахватывающая — match.group(1) всегда возвращает значение ключа
+    pattern: '(?i)(?:api_key|apikey|api-key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен ключ API общего вида. Такие ключи часто используются для доступа к различным сервисам."
+    remediation: "Проверьте, является ли этот ключ чувствительным. Если да, переместите его в переменные окружения или секрет-менеджер (например, HashiCorp Vault, AWS Secrets Manager)."
+
+  - id: PRIVATE_KEY
+    name: "Private Key"
+    pattern: '-----BEGIN (?:EC|RSA|DSA|PGP) PRIVATE KEY-----'
+    severity: CRITICAL
+    description: "Обнаружен приватный ключ в формате PEM. Компрометация приватного ключа может привести к расшифровке трафика или несанкционированному доступу по SSH."
+    remediation: "Никогда не храните приватные ключи в репозиториях. Немедленно отозвите скомпрометированный ключ и перевыпустите пару ключей."
+
+  - id: STRIPE_SECRET_KEY
+    name: "Stripe Secret Key"
+    pattern: 'sk_live_[a-zA-Z0-9]{24,}'
+    severity: CRITICAL
+    description: "Обнаружен секретный ключ Stripe. Позволяет проводить платежи и получать доступ к финансовым данным."
+    remediation: "Немедленно отозвать ключ в Dashboard Stripe → Developers → API keys."
+
+  - id: STRIPE_RESTRICTED_KEY
+    name: "Stripe Restricted Key"
+    pattern: 'rk_live_[a-zA-Z0-9]{24,}'
+    severity: HIGH
+    description: "Обнаружен ограниченный ключ Stripe."
+    remediation: "Отозвать ключ в Dashboard Stripe → Developers → Restricted keys."
+
+  - id: SLACK_TOKEN
+    name: "Slack Token"
+    pattern: 'xox[baprs]-[0-9]{12}-[0-9]{12}-[a-zA-Z0-9]{24}'
+    severity: HIGH
+    description: "Обнаружен токен Slack. Позволяет отправлять сообщения и управлять рабочим пространством."
+    remediation: "Отзовите токен на api.slack.com → Your Apps → OAuth & Permissions."
+
+  - id: SLACK_WEBHOOK
+    name: "Slack Incoming Webhook"
+    pattern: 'https://hooks\.slack\.com/services/T[a-zA-Z0-9]{8}/B[a-zA-Z0-9]{8,}/[a-zA-Z0-9]{24}'
+    severity: HIGH
+    description: "Обнаружен входящий вебхук Slack. Позволяет отправлять сообщения в канал."
+    remediation: "Удалите вебхук в настройках Slack App → Incoming Webhooks."
+
+  - id: GOOGLE_API_KEY
+    name: "Google API Key"
+    pattern: 'AIza[0-9A-Za-z\-_]{35}'
+    severity: HIGH
+    description: "Обнаружен Google API Key. Может предоставить доступ к сервисам Google Cloud, Maps и другим."
+    remediation: "Отзовите ключ в Google Cloud Console → APIs & Services → Credentials."
+
+  - id: GOOGLE_OAUTH_TOKEN
+    name: "Google OAuth Access Token"
+    pattern: 'ya29\.[0-9A-Za-z\-_]{68,}'
+    severity: CRITICAL
+    description: "Обнаружен Google OAuth Access Token. Предоставляет временный доступ к Google-сервисам от имени пользователя."
+    remediation: "Отзовите токен через myaccount.google.com → Security → Third-party apps."
+
+  - id: GITLAB_TOKEN
+    name: "GitLab Personal Access Token"
+    pattern: 'glpat-[a-zA-Z0-9\-_]{20}'
+    severity: CRITICAL
+    description: "Обнаружен Personal Access Token GitLab."
+    remediation: "Отзовите токен в GitLab → User Settings → Access Tokens."
+
+  - id: HEROKU_API_KEY
+    name: "Heroku API Key"
+    pattern: '[h|H][e|E][r|R][o|O][k|K][u|U][_\-]?[a|A][p|P][i|I][_\-]?[k|K][e|E][y|Y]\s*[:=]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен API-ключ Heroku. Позволяет управлять приложениями и инфраструктурой."
+    remediation: "Сбросьте ключ в настройках аккаунта Heroku → Account → API Key."
+
+  - id: SENDGRID_API_KEY
+    name: "SendGrid API Key"
+    pattern: 'SG\.[a-zA-Z0-9\-_]{22}\.[a-zA-Z0-9\-_]{43}'
+    severity: HIGH
+    description: "Обнаружен API-ключ SendGrid. Позволяет отправлять email-рассылки."
+    remediation: "Отзовите ключ в SendGrid → Settings → API Keys."
+
+  - id: TWILIO_ACCOUNT_SID
+    name: "Twilio Account SID"
+    pattern: 'AC[a-zA-Z0-9]{32}'
+    severity: HIGH
+    description: "Обнаружен Twilio Account SID."
+    remediation: "Смените Auth Token в консоли Twilio. SID сам по себе не является секретом, но вместе с Auth Token даёт полный доступ."
+
+  - id: TWILIO_AUTH_TOKEN
+    name: "Twilio Auth Token"
+    pattern: '(?i)twilio[_\-]?auth[_\-]?token\s*[:=]\s*["\x27]?([a-zA-Z0-9]{32})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен Twilio Auth Token. Даёт полный доступ к аккаунту Twilio."
+    remediation: "Немедленно смените Auth Token в консоли Twilio."
+
+  - id: MAILGUN_API_KEY
+    name: "Mailgun API Key"
+    pattern: 'key-[a-zA-Z0-9]{32}'
+    severity: HIGH
+    description: "Обнаружен API-ключ Mailgun. Позволяет отправлять email и управлять доменами."
+    remediation: "Отзовите ключ в Mailgun → Account → API Keys."
+
+  - id: FIREBASE_SERVER_KEY
+    name: "Firebase Server Key"
+    pattern: 'AAAA[a-zA-Z0-9\-_]{7}:[a-zA-Z0-9\-_]{140}'
+    severity: CRITICAL
+    description: "Обнаружен Firebase Server Key. Позволяет отправлять push-уведомления от имени приложения."
+    remediation: "Пересоздайте ключ в Firebase Console → Project Settings → Cloud Messaging."
+
+  - id: SQUARE_ACCESS_TOKEN
+    name: "Square Access Token"
+    pattern: 'sq0atp-[a-zA-Z0-9\-_]{22}'
+    severity: CRITICAL
+    description: "Обнаружен токен Square. Позволяет проводить платежи через Square API."
+    remediation: "Отзовите токен в Square Developer Dashboard → OAuth."
+
+  - id: PAYPAL_CLIENT_SECRET
+    name: "PayPal Client Secret"
+    pattern: '(?i)paypal[_\-]?(?:client[_\-]?secret|secret|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9\-_]{32,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен Client Secret PayPal. Позволяет выполнять платежные операции."
+    remediation: "Пересоздайте учётные данные в PayPal Developer Dashboard."
+
+  - id: DIGITALOCEAN_TOKEN
+    name: "DigitalOcean Personal Access Token"
+    pattern: 'dop_v1_[a-f0-9]{64}'
+    severity: CRITICAL
+    description: "Обнаружен Personal Access Token DigitalOcean. Позволяет управлять дроплетами и инфраструктурой."
+    remediation: "Отзовите токен в DigitalOcean → Account → API → Tokens."
+
+  - id: AZURE_CLIENT_SECRET
+    name: "Azure Client Secret"
+    pattern: '(?i)azure[_\-]?(?:client[_\-]?secret|tenant[_\-]?id|subscription[_\-]?id|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9~._\-]{20,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружены учётные данные Azure. Могут предоставить доступ к ресурсам Microsoft Azure."
+    remediation: "Пересоздайте секрет в Azure Active Directory → App Registrations → Certificates & secrets."
+
+  - id: GITHUB_APP_TOKEN
+    name: "GitHub App Token"
+    pattern: '(?:ghs|ghu|ghr)_[a-zA-Z0-9]{36}'
+    severity: CRITICAL
+    description: "Обнаружен токен GitHub App (server-to-server, user-to-server или refresh)."
+    remediation: "Немедленно отзовите токен в настройках GitHub App."
+
+  - id: NPM_TOKEN
+    name: "NPM Token"
+    pattern: 'npm_[a-zA-Z0-9]{36}'
+    severity: HIGH
+    description: "Обнаружен токен NPM. Позволяет публиковать пакеты и управлять аккаунтом."
+    remediation: "Отзовите токен на npmjs.com → Access Tokens."
+
+  - id: DOCKER_HUB_TOKEN
+    name: "Docker Hub Access Token"
+    pattern: '(?i)(?:docker[_\-]?(?:hub[_\-]?)?|dockerhub[_\-]?)(?:token|password|pat|access[_\-]?token)\s*[:=]\s*["\x27]?([a-zA-Z0-9\-_\.]{20,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен токен Docker Hub. Позволяет пушить образы в реестр."
+    remediation: "Отзовите токен на hub.docker.com → Account Settings → Security."
+
+  - id: GENERIC_PASSWORD
+    name: "Generic Password in Code"
+    pattern: '(?i)(?:password|passwd|pwd)\s*[:=]\s*["\x27]([^"\x27\s]{8,})["\x27]'
+    severity: HIGH
+    description: "Обнаружен пароль, захардкоженный в коде. Это нарушение базовых требований безопасности."
+    remediation: "Перенесите пароль в переменные окружения или секрет-менеджер. Не храните пароли в репозиториях."
+
+  - id: GENERIC_SECRET
+    name: "Generic Secret"
+    pattern: '(?i)(?:secret|client_secret|app_secret)\s*[:=]\s*["\x27]([a-zA-Z0-9_\-!@#$%^&*]{12,})["\x27]'
+    severity: HIGH
+    description: "Обнаружен хардкод секрета общего вида."
+    remediation: "Перенесите секрет в переменные окружения или секрет-менеджер."
+
+  - id: BASIC_AUTH_IN_URL
+    name: "Basic Auth Credentials in URL"
+    pattern: 'https?://[^:\s]{3,}:[^@\s]{3,}@[a-zA-Z0-9.\-]+'
+    severity: CRITICAL
+    description: "Обнаружены учётные данные Basic Auth в URL. Пароль передаётся в открытом виде и сохраняется в логах."
+    remediation: "Уберите учётные данные из URL. Используйте переменные окружения или файлы конфигурации."
+
+  # ===========================================================================
+  # YANDEX CLOUD
+  # ===========================================================================
+
   - id: YANDEX_CLOUD_IAM_TOKEN
     name: "Yandex Cloud IAM Token"
-    # ИСПРАВЛЕНО: добавлена точка \. в класс символов, т.к. реальные IAM-токены
-    # содержат точки-разделители внутри тела токена (формат: t1.<сегмент>.<сегмент>).
-    # Без этого паттерн обрывался на первой внутренней точке, не набирая 150 символов.
+    # Реальные IAM-токены имеют точки внутри тела: t1.<сегмент>.<сегмент>
     pattern: 't1\.[A-Za-z0-9_\-\.]{150,}'
     severity: CRITICAL
     description: "Обнаружен Yandex Cloud IAM-токен. Это короткоживущий токен для аутентификации в Yandex Cloud."
@@ -387,6 +617,46 @@ rules:
       Немедленно отзовите ключ в консоли Yandex Cloud: IAM → Сервисные аккаунты →
       [ваш аккаунт] → API-ключи. Создайте новый и передавайте через переменную
       окружения или секрет в Yandex Lockbox.
+
+  - id: YANDEX_LOCKBOX_SECRET
+    name: "Yandex Lockbox Secret ID"
+    # ID секретов Yandex Lockbox начинаются с e6q
+    pattern: '(?i)(?:lockbox|yandex[_\-]?lockbox)[_\-]?(?:secret[_\-]?id|key|value)\s*[:=]\s*["\x27]?(e6q[a-zA-Z0-9]{15,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен ID секрета Yandex Lockbox. Может использоваться для получения сохранённых секретов из хранилища."
+    remediation: "Отзовите доступ к секрету в консоли Yandex Cloud → Lockbox."
+
+  - id: YANDEX_MAPS_API_KEY
+    name: "Yandex Maps API Key"
+    pattern: '(?i)(?:yandex[_\-]?maps?|ymaps?)[_\-]?(?:api[_\-]?key|key|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{30,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен ключ Яндекс Карт. Злоупотребление ключом может привести к расходам."
+    remediation: "Перегенерируйте ключ в консоли Яндекс Облака. Ограничьте доступ по домену/IP."
+
+  - id: YANDEX_METRIKA_TOKEN
+    name: "Yandex Metrika OAuth Token"
+    pattern: '(?i)(?:metrika|metrica|yandex[_\-]?metrika)[_\-]?(?:token|oauth|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен OAuth-токен Яндекс.Метрики. Даёт доступ к статистике и настройкам счётчиков."
+    remediation: "Отзовите токен на oauth.yandex.ru → Приложения."
+
+  - id: YANDEX_MARKET_API_TOKEN
+    name: "Yandex Market / Direct API Token"
+    pattern: '(?i)(?:yandex[_\-]?(?:market|direct)|market[_\-]?api)[_\-]?(?:token|oauth|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{32,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен OAuth-токен Яндекс.Маркет или Яндекс.Директ."
+    remediation: "Отзовите токен на oauth.yandex.ru → Мои приложения."
+
+  - id: APPMETRICA_API_KEY
+    name: "AppMetrica API Key"
+    pattern: '(?i)(?:appmetrica|app[_\-]?metrica)[_\-]?(?:api[_\-]?key|token|oauth)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ AppMetrica."
+    remediation: "Отзовите ключ в настройках AppMetrica → Доступ → API-ключи."
+
+  # ===========================================================================
+  # VK / TELEGRAM / BITRIX
+  # ===========================================================================
 
   - id: VK_API_TOKEN
     name: "VK API Access Token"
@@ -414,6 +684,393 @@ rules:
     remediation: >
       Удалите вебхук в настройках портала Bitrix24 (Разработчикам → Входящие webhook).
       Создайте новый и передавайте его URL через переменную окружения.
+
+  - id: BITRIX24_OAUTH_TOKEN
+    name: "Bitrix24 OAuth Access Token"
+    pattern: '(?i)(?:bitrix24|bitrix)[_\-]?(?:access[_\-]?token|oauth[_\-]?token|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{40,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен OAuth-токен Bitrix24. Позволяет выполнять операции в CRM от имени пользователя."
+    remediation: "Отзовите приложение в Bitrix24 → Профиль → Разрешения приложений."
+
+  # ===========================================================================
+  # РОССИЙСКИЕ ОБЛАЧНЫЕ ПРОВАЙДЕРЫ
+  # ===========================================================================
+
+  - id: SELECTEL_API_TOKEN
+    name: "Selectel API Token"
+    pattern: '(?i)selectel[_\-]?(?:token|api[_\-]?key|secret|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен токен Selectel. Может предоставить доступ к объектному хранилищу и серверам."
+    remediation: "Отзовите токен в панели управления Selectel → Профиль → Токены."
+
+  - id: VK_CLOUD_TOKEN
+    name: "VK Cloud Token"
+    pattern: '(?i)(?:vk[_\-]?cloud|mcs|mail[_\-]?cloud)[_\-]?(?:token|api[_\-]?key|secret|access[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружены учётные данные VK Cloud (Mail.ru Cloud Solutions / MCS)."
+    remediation: "Удалите ключ в консоли VK Cloud → IAM → Сервисные пользователи."
+
+  - id: TIMEWEB_CLOUD_TOKEN
+    name: "Timeweb Cloud API Token"
+    pattern: '(?i)timeweb[_\-]?(?:token|api[_\-]?key|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{20,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-токен Timeweb Cloud."
+    remediation: "Отзовите токен в личном кабинете Timeweb → API → Токены."
+
+  - id: BEGET_API_KEY
+    name: "Beget API Key"
+    pattern: '(?i)beget[_\-]?(?:api[_\-]?key|token|secret|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ хостинга Beget."
+    remediation: "Сбросьте ключ в личном кабинете Beget → Настройки → API."
+
+  - id: REGRU_API_KEY
+    name: "Reg.ru API Key"
+    pattern: '(?i)(?:reg[_\-]?ru|regru)[_\-]?(?:api[_\-]?key|token|secret|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{10,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ Reg.ru. Позволяет управлять доменами, хостингом и DNS."
+    remediation: "Отзовите ключ в личном кабинете Reg.ru → Настройки API."
+
+  - id: CROC_CLOUD_TOKEN
+    name: "CROC Cloud API Token"
+    pattern: '(?i)(?:croc[_\-]?cloud|croc)[_\-]?(?:token|api[_\-]?key|secret|access[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен токен CROC Cloud. Риск несанкционированного доступа к корпоративной облачной инфраструктуре."
+    remediation: "Немедленно обратитесь в службу поддержки CROC и отзовите скомпрометированный ключ."
+
+  - id: SBERCLOUD_TOKEN
+    name: "SberCloud API Token"
+    pattern: '(?i)(?:sber[_\-]?cloud|sbercloud)[_\-]?(?:token|api[_\-]?key|secret|ak|sk)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{20,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен токен SberCloud."
+    remediation: "Отзовите ключ в консоли SberCloud → IAM."
+
+  - id: ISPMANAGER_API_KEY
+    name: "ISPmanager API Key"
+    pattern: '(?i)(?:ispmanager|isp[_\-]?manager|ispsystem)[_\-]?(?:api[_\-]?key|key|token|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{8,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружены учётные данные ISPmanager."
+    remediation: "Смените пароль и отзовите ключ в панели ISPmanager → Пользователи."
+
+  # ===========================================================================
+  # ПЛАТЁЖНЫЕ СИСТЕМЫ (РОССИЯ)
+  # ===========================================================================
+
+  - id: YOOMONEY_SECRET_KEY
+    name: "YooMoney (ЮМани) Secret Key"
+    pattern: '(?i)(?:yoomoney|yoo[_\-]?money|yamoney|ya[_\-]?money)[_\-]?(?:secret|token|key|api[_\-]?key|oauth)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен секретный ключ ЮМани. Риск несанкционированных платежей от имени магазина."
+    remediation: "Отзовите токен в настройках магазина ЮМани."
+
+  - id: YOOKASSA_SECRET_KEY
+    name: "YooKassa (ЮКасса) Secret Key"
+    # Ключи ЮКасса начинаются с live_ или test_
+    pattern: '(?:live|test)_[a-zA-Z0-9_\-:]{20,}'
+    severity: CRITICAL
+    description: "Обнаружен секретный ключ ЮКасса. Позволяет проводить и отменять платежи."
+    remediation: "Немедленно отзовите ключ в личном кабинете ЮКасса."
+
+  - id: TINKOFF_SECRET_KEY
+    name: "Tinkoff (T-Bank) Terminal Key"
+    pattern: '(?i)(?:tinkoff|tbank|t[_\-]?bank)[_\-]?(?:secret[_\-]?key|terminal[_\-]?key|password|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{8,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен секретный ключ терминала Тинькофф/Т-Банк."
+    remediation: "Заблокируйте терминал и сгенерируйте новый ключ в личном кабинете Тинькофф Эквайринг."
+
+  - id: QIWI_API_TOKEN
+    name: "QIWI API Token"
+    pattern: '(?i)qiwi[_\-]?(?:token|api[_\-]?key|p2p[_\-]?key|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен API-токен QIWI. Может использоваться для переводов и проверки баланса."
+    remediation: "Заблокируйте токен на сайте qiwi.com → Настройки → API."
+
+  - id: CLOUDPAYMENTS_API_KEY
+    name: "CloudPayments API Key"
+    pattern: '(?i)(?:cloudpayments|cloud[_\-]?payments)[_\-]?(?:api[_\-]?(?:key|secret|password)|public[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен ключ CloudPayments. Позволяет проводить платежи и управлять подписками."
+    remediation: "Отзовите ключ в личном кабинете CloudPayments → Настройки → Ключи API."
+
+  - id: ROBOKASSA_MERCHANT_PASSWORD
+    name: "Robokassa Merchant Password"
+    pattern: '(?i)robokassa[_\-]?(?:password[12]?|mrh[_\-]?pass|merchant[_\-]?pass)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-!@#$%]{8,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен пароль магазина Robokassa."
+    remediation: "Немедленно смените пароль в личном кабинете Robokassa → Технические настройки."
+
+  - id: SBERBANK_MERCHANT_TOKEN
+    name: "Sberbank Acquiring Token"
+    pattern: '(?i)(?:sberbank|sber)[_\-]?(?:token|api[_\-]?key|merchant[_\-]?(?:login|password)|acquiring)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружены учётные данные Sberbank Ecommerce."
+    remediation: "Обратитесь в службу поддержки Сбербанка для блокировки и перевыпуска ключей."
+
+  - id: ALFA_BANK_TOKEN
+    name: "Alfa-Bank Acquiring Token"
+    pattern: '(?i)(?:alfa[_\-]?bank|alfabank)[_\-]?(?:token|api[_\-]?key|merchant[_\-]?(?:login|password))\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{8,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружены учётные данные интернет-эквайринга Альфа-Банка."
+    remediation: "Заблокируйте учётные данные через службу поддержки Альфа-Банка."
+
+  - id: PAYMASTER_SECRET
+    name: "PayMaster Secret Key"
+    pattern: '(?i)paymaster[_\-]?(?:secret|api[_\-]?key|password|hmac)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен секретный ключ PayMaster."
+    remediation: "Сбросьте ключ в личном кабинете PayMaster → Настройки магазина."
+
+  - id: MODULBANK_API_KEY
+    name: "МодульБанк API Key"
+    pattern: '(?i)(?:modulbank|modul[_\-]?bank)[_\-]?(?:api[_\-]?key|token|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{32,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен API-ключ МодульБанка. Позволяет просматривать остатки и проводить платежи."
+    remediation: "Немедленно отзовите ключ в интернет-банке МодульБанка."
+
+  - id: TOCHKA_BANK_API_KEY
+    name: "Точка Банк API Key"
+    pattern: '(?i)(?:tochka|точка)[_\-]?(?:api[_\-]?key|token|secret|client[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен API-ключ Точка Банка."
+    remediation: "Отзовите ключ через поддержку Точка Банка."
+
+  - id: LIQPAY_PRIVATE_KEY
+    name: "LiqPay Private Key"
+    pattern: '(?i)liqpay[_\-]?(?:private[_\-]?key|secret|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен приватный ключ LiqPay."
+    remediation: "Пересоздайте ключи в личном кабинете LiqPay → Бизнес → Мерчанты."
+
+  # ===========================================================================
+  # SMS-ШЛЮЗЫ И ТЕЛЕКОМ (РОССИЯ)
+  # ===========================================================================
+
+  - id: SMSRU_API_ID
+    name: "SMS.ru API ID"
+    # SMS.ru использует UUID v4 в качестве API-ID
+    pattern: '(?i)(?:sms[_\-]?ru|smsru)[_\-]?(?:api[_\-]?id|key|token)\s*[:=]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API ID сервиса SMS.ru (UUID-формат)."
+    remediation: "Сгенерируйте новый API ID в личном кабинете SMS.ru → Настройки API."
+
+  - id: SMSC_CREDENTIALS
+    name: "SMSC.ru Credentials"
+    pattern: '(?i)smsc[_\-]?(?:login|password|api[_\-]?key|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{6,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружены учётные данные SMSC.ru."
+    remediation: "Смените пароль в личном кабинете SMSC.ru и отзовите API-ключи."
+
+  - id: SMSAERO_API_KEY
+    name: "SmsAero API Key"
+    pattern: '(?i)(?:smsaero|sms[_\-]?aero)[_\-]?(?:api[_\-]?key|key|token|password)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ SmsAero."
+    remediation: "Отзовите ключ в личном кабинете SmsAero → Интеграция → API."
+
+  - id: MTS_EXOLVE_API_KEY
+    name: "MTS Exolve API Key"
+    pattern: '(?i)(?:mts[_\-]?exolve|exolve|mts[_\-]?api)[_\-]?(?:api[_\-]?key|token|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{20,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ MTS Exolve."
+    remediation: "Отзовите ключ в личном кабинете MTS Exolve."
+
+  - id: DEVINO_API_KEY
+    name: "Devino Telecom API Key"
+    pattern: '(?i)devino[_\-]?(?:api[_\-]?key|token|login|password|session[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружены учётные данные Devino Telecom."
+    remediation: "Смените пароль и отзовите сессионный ключ в личном кабинете Devino."
+
+  # ===========================================================================
+  # КАРТЫ И ГЕОСЕРВИСЫ
+  # ===========================================================================
+
+  - id: TWOGIS_API_KEY
+    name: "2GIS API Key"
+    pattern: '(?i)(?:twogis|2gis)[_\-]?(?:api[_\-]?key|key|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ 2GIS."
+    remediation: "Отзовите ключ в личном кабинете 2GIS API → Мои ключи."
+
+  # ===========================================================================
+  # ДАННЫЕ И EDO (РОССИЯ)
+  # ===========================================================================
+
+  - id: DADATA_API_KEY
+    name: "DaData API Key"
+    # DaData выдаёт ключи в виде hex-строки длиной 40 символов
+    pattern: '(?i)dadata[_\-]?(?:api[_\-]?key|key|token|secret)\s*[:=]\s*["\x27]?([a-f0-9]{40})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ DaData (hex, 40 символов)."
+    remediation: "Сбросьте ключ в личном кабинете DaData → Кабинет → API-ключи."
+
+  - id: DIADOC_API_KEY
+    name: "Kontur Diadoc API Key"
+    pattern: '(?i)(?:diadoc|диадок)[_\-]?(?:api[_\-]?key|key|token|client[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен API-ключ Диадок (СКБ Контур). Позволяет работать с юридически значимыми документами."
+    remediation: "Отзовите ключ в личном кабинете Диадок → Настройки → API-ключи."
+
+  - id: KONTUR_EXTERN_API_KEY
+    name: "Kontur.Extern API Key"
+    pattern: '(?i)(?:kontur[_\-]?extern|kontur)[_\-]?(?:api[_\-]?key|key|token|client[_\-]?id)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен API-ключ Kontur.Extern. Позволяет работать с налоговой отчётностью."
+    remediation: "Обратитесь в поддержку СКБ Контур для отзыва скомпрометированного ключа."
+
+  - id: SBIS_API_TOKEN
+    name: "СБИС (Tenzor) API Token"
+    pattern: '(?i)(?:sbis|тензор|tenzor)[_\-]?(?:token|api[_\-]?key|sid|session)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен токен СБИС. Может предоставить доступ к бухгалтерии и электронному документообороту."
+    remediation: "Завершите все сессии и смените ключи в настройках СБИС."
+
+  - id: KONTUR_FOCUS_API_KEY
+    name: "Kontur.Focus API Key"
+    pattern: '(?i)(?:kontur[_\-]?focus|focus[_\-]?api)[_\-]?(?:api[_\-]?key|key|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ Kontur.Focus."
+    remediation: "Отзовите ключ через поддержку СКБ Контур."
+
+  # ===========================================================================
+  # CRM И БИЗНЕС (РОССИЯ)
+  # ===========================================================================
+
+  - id: AMOCRM_ACCESS_TOKEN
+    name: "amoCRM / Kommo Access Token"
+    pattern: '(?i)(?:amocrm|kommo|amo)[_\-]?(?:access[_\-]?token|api[_\-]?key|token|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{40,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен токен amoCRM / Kommo."
+    remediation: "Отзовите интеграцию в настройках amoCRM → Интеграции."
+
+  - id: RETAILCRM_API_KEY
+    name: "RetailCRM API Key"
+    pattern: '(?i)(?:retailcrm|retail[_\-]?crm)[_\-]?(?:api[_\-]?key|key|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9]{32,48})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ RetailCRM."
+    remediation: "Удалите ключ в RetailCRM → Настройки → Интеграции → API."
+
+  - id: PLANFIX_API_KEY
+    name: "Planfix API Key"
+    pattern: '(?i)planfix[_\-]?(?:api[_\-]?(?:key|token)|token|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ Planfix."
+    remediation: "Сбросьте ключ в настройках аккаунта Planfix → Личные данные → API."
+
+  - id: SMART_TECHNOLOGIES_API
+    name: "Smart Technologies API Key"
+    pattern: '(?i)(?:smart[_\-]?tech(?:nologies)?|smarttech)[_\-]?(?:api[_\-]?key|token|secret|client[_\-]?(?:id|secret))\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ Smart Technologies."
+    remediation: "Обратитесь к администратору Smart Technologies для отзыва скомпрометированного ключа."
+
+  # ===========================================================================
+  # ПОЧТА И РАССЫЛКИ (РОССИЯ)
+  # ===========================================================================
+
+  - id: UNISENDER_API_KEY
+    name: "UniSender API Key"
+    pattern: '(?i)unisender[_\-]?(?:api[_\-]?key|key|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-ключ UniSender."
+    remediation: "Сбросьте ключ в личном кабинете UniSender → Профиль → Доступ к API."
+
+  - id: SENDPULSE_SECRET
+    name: "SendPulse API Secret"
+    pattern: '(?i)(?:sendpulse|send[_\-]?pulse)[_\-]?(?:api[_\-]?(?:secret|user|key)|client[_\-]?secret|token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен секрет SendPulse."
+    remediation: "Сгенерируйте новые ключи в личном кабинете SendPulse → Настройки → API."
+
+  - id: SENDSAY_API_KEY
+    name: "Sendsay API Key"
+    pattern: '(?i)sendsay[_\-]?(?:api[_\-]?key|key|token|login|subuser)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{8,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружены учётные данные Sendsay."
+    remediation: "Смените пароль и отзовите ключ в настройках аккаунта Sendsay."
+
+  - id: MAILRU_API_TOKEN
+    name: "Mail.ru / VK API Token"
+    pattern: '(?i)(?:mailru|mail[_\-]?ru|vkid|vk[_\-]?id)[_\-]?(?:api[_\-]?(?:key|token)|access[_\-]?token|oauth[_\-]?token|client[_\-]?secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{20,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен токен Mail.ru / VK ID API."
+    remediation: "Отзовите приложение на id.vk.com → Приложения."
+
+  # ===========================================================================
+  # МАРКЕТПЛЕЙСЫ И ДОСТАВКА (РОССИЯ)
+  # ===========================================================================
+
+  - id: WILDBERRIES_API_KEY
+    name: "Wildberries API Key"
+    # WB API-ключи — JWT-формат (три части, разделённые точками)
+    pattern: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{20,}'
+    severity: CRITICAL
+    description: "Обнаружен API-ключ Wildberries (JWT-формат). Позволяет управлять товарами, заказами и ценами."
+    remediation: "Пересоздайте токен в личном кабинете WB → Настройки → Доступ к API."
+
+  - id: OZON_API_KEY
+    name: "Ozon Seller API Key"
+    pattern: '(?i)ozon[_\-]?(?:api[_\-]?key|client[_\-]?id|client[_\-]?secret|seller[_\-]?(?:key|token))\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен ключ Ozon Seller API."
+    remediation: "Пересоздайте ключ в личном кабинете Ozon → Настройки → API-ключи."
+
+  - id: HEADHUNTER_API_TOKEN
+    name: "HeadHunter (hh.ru) API Token"
+    pattern: '(?i)(?:hh[_\-]?ru|headhunter)[_\-]?(?:access[_\-]?token|api[_\-]?(?:key|token)|oauth[_\-]?token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{32,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-токен hh.ru."
+    remediation: "Отзовите токен на dev.hh.ru → Приложения → Авторизованные приложения."
+
+  - id: AVITO_CLIENT_SECRET
+    name: "Avito API Client Secret"
+    pattern: '(?i)avito[_\-]?(?:client[_\-]?secret|api[_\-]?(?:key|secret)|access[_\-]?token)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен секрет Avito API."
+    remediation: "Пересоздайте приложение в кабинете разработчика Avito."
+
+  - id: CDEK_ACCOUNT_CREDENTIALS
+    name: "CDEK API Credentials"
+    pattern: '(?i)cdek[_\-]?(?:account|client[_\-]?id|api[_\-]?(?:key|login)|login)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-@\.]{6,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружены учётные данные CDEK API."
+    remediation: "Смените пароль и пересоздайте ключи в личном кабинете CDEK."
+
+  # ===========================================================================
+  # ИНФРАСТРУКТУРА
+  # ===========================================================================
+
+  - id: JIRA_CONFLUENCE_RU_TOKEN
+    name: "Atlassian (Jira/Confluence) API Token"
+    pattern: '(?i)(?:jira|confluence)[_\-]?(?:api[_\-]?token|token|password|api[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9]{24})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен API-токен Jira или Confluence."
+    remediation: "Отзовите токен на id.atlassian.com → Security → API tokens."
+
+  - id: CLICKHOUSE_CLOUD_KEY
+    name: "ClickHouse Cloud API Key"
+    pattern: '(?i)clickhouse[_\-]?(?:api[_\-]?key|token|secret|password|cloud[_\-]?key)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{20,})["\x27]?'
+    severity: HIGH
+    description: "Обнаружен ключ ClickHouse Cloud."
+    remediation: "Отзовите ключ в консоли ClickHouse Cloud → API Keys."
+
+  # ===========================================================================
+  # ГОСУДАРСТВЕННЫЕ СЕРВИСЫ (РОССИЯ)
+  # ===========================================================================
+
+  - id: ESIA_TOKEN
+    name: "ЕСИА (Госуслуги) OAuth Token"
+    pattern: '(?i)(?:esia|gosuslugi|есиа)[_\-]?(?:access[_\-]?token|token|oauth)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-\.]{32,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен OAuth-токен ЕСИА (Госуслуги). Может содержать персональные данные граждан."
+    remediation: "Немедленно отзовите токен через API ЕСИА. Уведомите пользователя о компрометации."
+
+  - id: NALOG_RU_API_TOKEN
+    name: "ФНС / nalog.ru API Token"
+    pattern: '(?i)(?:nalog[_\-]?ru|nalog|fns[_\-]?api|фнс)[_\-]?(?:api[_\-]?(?:key|token)|token|secret)\s*[:=]\s*["\x27]?([a-zA-Z0-9_\-]{16,})["\x27]?'
+    severity: CRITICAL
+    description: "Обнаружен токен API ФНС / nalog.ru."
+    remediation: "Немедленно заблокируйте ключ. Уведомите ответственного по безопасности."
 
 # ============================================================
 # FILE: config/settings.yaml
@@ -755,45 +1412,50 @@ class BaseDetector(ABC):
 # ============================================================
 
 # scanner/detectors/confidence_scorer.py
-
 import re
 from ..core.finding import Finding
-
 
 class ConfidenceScorer:
     """
     Модуль для оценки уверенности [0.0-1.0] для каждой находки.
     """
-
     TEST_PATH_RE = re.compile(
-        r'[/\\](tests?|fixtures|__tests__)[/\\]|test_.*\.py|.*_test\.py', re.I
+        r'[/\\\\](tests?|fixtures|__tests__)[/\\\\]|test_.*\.py|.*_test\.py', re.I
     )
     EXAMPLE_VALUES_RE = re.compile(
-        # ИСПРАВЛЕНО: убрано слово 'example', т.к. оно присутствует в легитимных
-        # тестовых токенах AWS (AKIAIOSFODNN7EXAMPLE) и вызывало ложный штраф.
         r'\btest\b|placeholder|dummy|your_?|fake|mock|sample|replace|changeme|xxx',
         re.I
     )
-    DOCS_PATH_RE = re.compile(r'[/\\](docs?|examples?)[/\\]|README', re.I)
+    DOCS_PATH_RE = re.compile(r'[/\\\\](docs?|examples?)[/\\\\]|README', re.I)
     COMMENT_LINE_RE = re.compile(r'^\s*#')
 
-    # ИСПРАВЛЕНО: добавлены BITRIX_WEBHOOK и GENERIC_API_KEY —
-    # оба правила давали находки, но не получали бонус +0.40 за специфичность,
-    # из-за чего итоговый score не преодолевал порог фильтрации.
     SPECIFIC_RULE_IDS = {
-        'YANDEX_CLOUD_IAM_TOKEN',
-        'YANDEX_CLOUD_API_KEY',
-        'VK_API_TOKEN',
-        'TELEGRAM_BOT_TOKEN',
-        'AWS_ACCESS_KEY',
-        'GITHUB_TOKEN',
-        'PRIVATE_KEY',
-        'BITRIX_WEBHOOK',
-        'GENERIC_API_KEY',
+        'AWS_ACCESS_KEY', 'GITHUB_TOKEN', 'PRIVATE_KEY',
+        'YANDEX_CLOUD_IAM_TOKEN', 'YANDEX_CLOUD_API_KEY',
+        'VK_API_TOKEN', 'TELEGRAM_BOT_TOKEN', 'BITRIX_WEBHOOK',
+        'GENERIC_API_KEY', 'SELECTEL_API_TOKEN', 'VK_CLOUD_TOKEN', 
+        'TIMEWEB_CLOUD_TOKEN', 'BEGET_API_KEY', 'REGRU_API_KEY', 
+        'CROC_CLOUD_TOKEN', 'SBERCLOUD_TOKEN', 'YOOMONEY_SECRET_KEY', 
+        'YOOKASSA_SECRET_KEY', 'TINKOFF_SECRET_KEY', 'QIWI_API_TOKEN', 
+        'CLOUDPAYMENTS_API_KEY', 'ROBOKASSA_MERCHANT_PASSWORD',
+        'SBERBANK_MERCHANT_TOKEN', 'ALFA_BANK_TOKEN', 'PAYMASTER_SECRET',
+        'MODULBANK_API_KEY', 'TOCHKA_BANK_API_KEY', 'LIQPAY_PRIVATE_KEY',
+        'SMSRU_API_ID', 'SMSC_CREDENTIALS', 'SMSAERO_API_KEY',
+        'MTS_EXOLVE_API_KEY', 'DEVINO_API_KEY', 'YANDEX_MAPS_API_KEY', 
+        'TWOGIS_API_KEY', 'YANDEX_METRIKA_TOKEN', 'APPMETRICA_API_KEY',
+        'DADATA_API_KEY', 'DIADOC_API_KEY', 'KONTUR_EXTERN_API_KEY',
+        'SBIS_API_TOKEN', 'KONTUR_FOCUS_API_KEY', 'AMOCRM_ACCESS_TOKEN', 
+        'RETAILCRM_API_KEY', 'PLANFIX_API_KEY', 'BITRIX24_OAUTH_TOKEN',
+        'UNISENDER_API_KEY', 'SENDPULSE_SECRET', 'SENDSAY_API_KEY', 'MAILRU_API_TOKEN',
+        'HEADHUNTER_API_TOKEN', 'AVITO_CLIENT_SECRET', 'CDEK_ACCOUNT_CREDENTIALS',
+        'WILDBERRIES_API_KEY', 'OZON_API_KEY', 'YANDEX_MARKET_API_TOKEN',
+        'ESIA_TOKEN', 'NALOG_RU_API_TOKEN', 'YANDEX_LOCKBOX_SECRET',
+        'CLICKHOUSE_CLOUD_KEY', 'ISPMANAGER_API_KEY',
+        'SMART_TECHNOLOGIES_API', 'JIRA_CONFLUENCE_RU_TOKEN',
     }
-
     KEYWORD_RE = re.compile(
-        r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token)',
+        r'(password|secret|token|key|passwd|pwd|api_key|apikey|access_token|auth_token'
+        r'|webhook|credential|private|client_secret|bearer)',
         re.I
     )
 
@@ -804,36 +1466,30 @@ class ConfidenceScorer:
         score = 0.5  # Базовая оценка
 
         # --- Применяем факторы СНИЖЕНИЯ ---
-        if self.TEST_PATH_RE.search(finding.file_path):
-            score -= 0.35
+
+        # ИСПРАВЛЕНИЕ: Закомментирована строка, которая сильно занижала оценку для тестовых файлов.
+        # Теперь сканер будет находить утечки в тестах с той же эффективностью, что и в основном коде.
+        # if self.TEST_PATH_RE.search(finding.file_path):
+        #     score -= 0.35
 
         if self.EXAMPLE_VALUES_RE.search(finding.secret):
             score -= 0.30
-
         if len(finding.secret) < 12 and finding.rule_id == 'GENERIC_API_KEY':
             score -= 0.20
-
         if self.DOCS_PATH_RE.search(finding.file_path):
             score -= 0.25
-
-        # Значительно снижаем уверенность, если находка находится в строке-комментарии.
-        # Это отсеивает закомментированные секреты (например, # OLD_KEY = "...").
         if self.COMMENT_LINE_RE.search(finding.line_content):
             score -= 0.40
 
         # --- Применяем факторы ПОВЫШЕНИЯ ---
         if finding.rule_id in self.SPECIFIC_RULE_IDS:
             score += 0.40
-
         if finding.rule_id == 'HIGH_ENTROPY_STRING':
             score += 0.25
-
-        # ИСПРАВЛЕНО: теперь line_content содержит полную строку кода (с именем
-        # переменной), поэтому KEYWORD_RE корректно срабатывает на слова
-        # 'token', 'key', 'password' и т.д. в именах переменных.
         if self.KEYWORD_RE.search(finding.line_content):
             score += 0.20
-
+        
+        # Этот бонус можно оставить, он повышает уверенность для не-тестовых файлов.
         if not self.TEST_PATH_RE.search(finding.file_path):
             score += 0.10
 
@@ -1114,20 +1770,58 @@ class ConfigParser(BaseParser):
 # FILE: scanner/parsers/python_parser.py
 # ============================================================
 
-# secret-scanner/scanner/parsers/python_parser.py
-
+# scanner/parsers/python_parser.py
 import ast
 import re
 import sys
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Union, Any
 import chardet
 from .base import BaseParser
 
-class ConcatFoldingVisitor(ast.NodeVisitor):
-    """ AST Visitor для рекурсивного вычисления строковых выражений. """
+class SecretReconstructor(ast.NodeVisitor):
+    """
+    Продвинутый AST Visitor, который отслеживает присваивания переменных
+    и реконструирует строки, собранные из частей.
+    """
     def __init__(self, file_path: str):
         self.file_path = file_path
+        self.symbol_table: Dict[str, Any] = {}  # Таблица для хранения значений переменных
         self.tokens: List[Dict] = []
+
+    def _evaluate_node(self, node: ast.AST) -> Any:
+        """Рекурсивно вычисляет значение узла AST."""
+        if isinstance(node, ast.Constant):
+            return node.value
+        if sys.version_info < (3, 8) and isinstance(node, ast.Str):
+            return node.s
+        if isinstance(node, ast.Name):
+            return self.symbol_table.get(node.id)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = self._evaluate_node(node.left)
+            right = self._evaluate_node(node.right)
+            if left is not None and right is not None:
+                try:
+                    return left + right
+                except TypeError:
+                    return None
+        if isinstance(node, ast.JoinedStr): # f-string
+            parts = [self._evaluate_node(v) for v in node.values]
+            if all(p is not None for p in parts):
+                return "".join(map(str, parts))
+        if isinstance(node, ast.FormattedValue):
+            return self._evaluate_node(node.value)
+        return None
+
+    def visit_Assign(self, node: ast.Assign):
+        """Посещает узлы присваивания (var = value)."""
+        value = self._evaluate_node(node.value)
+        if value is not None:
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.symbol_table[target.id] = value
+            # Добавляем реконструированное значение как токен
+            self.tokens.append({"value": str(value), "line": node.lineno, "file": self.file_path})
+        self.generic_visit(node)
 
     def visit_Constant(self, node: ast.Constant):
         if isinstance(node.value, str):
@@ -1139,38 +1833,11 @@ class ConcatFoldingVisitor(ast.NodeVisitor):
             self.tokens.append({"value": node.s, "line": node.lineno, "file": self.file_path})
         self.generic_visit(node)
 
-    def visit_BinOp(self, node: ast.BinOp):
-        if isinstance(node.op, ast.Add):
-            left_val = self._get_str_value(node.left)
-            right_val = self._get_str_value(node.right)
-            if left_val is not None and right_val is not None:
-                self.tokens.append({"value": left_val + right_val, "line": node.lineno, "file": self.file_path})
-                return
-        self.generic_visit(node)
-
-    def _get_str_value(self, node: ast.AST) -> Optional[str]:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
-        if hasattr(ast, 'Str') and isinstance(node, ast.Str):
-            return node.s
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            left = self._get_str_value(node.left)
-            right = self._get_str_value(node.right)
-            if left is not None and right is not None:
-                return left + right
-        return None
-
     def get_tokens(self) -> List[Dict]:
         return self.tokens
 
 class PythonParser(BaseParser):
     """ Продвинутый парсер для Python. """
-    CURRENT_PY_VERSION = (sys.version_info.major, sys.version_info.minor)
-    OLDEST_SUPPORTED_MINOR = 8
-    PYTHON_VERSIONS = [
-        (3, minor) for minor in range(CURRENT_PY_VERSION[1], OLDEST_SUPPORTED_MINOR - 1, -1)
-    ] if CURRENT_PY_VERSION[0] == 3 and CURRENT_PY_VERSION[1] >= OLDEST_SUPPORTED_MINOR else [(3, OLDEST_SUPPORTED_MINOR)]
-    
     CODING_RE = re.compile(br'^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)')
 
     def _detect_encoding(self, raw_bytes: bytes) -> str:
@@ -1193,30 +1860,35 @@ class PythonParser(BaseParser):
             raw_bytes = content.encode('utf-8', errors='replace')
         else:
             raw_bytes = content
-
+        
         encoding = self._detect_encoding(raw_bytes)
         try:
             source = raw_bytes.decode(encoding, errors='replace')
         except (UnicodeDecodeError, TypeError):
-            return self._fallback_line_scan(raw_bytes.decode('utf-8', errors='replace'), file_path)
+            source = raw_bytes.decode('utf-8', errors='replace')
 
+        all_tokens = []
         tree: Optional[ast.AST] = None
-        for major, minor in self.PYTHON_VERSIONS:
-            try:
-                tree = ast.parse(source, filename=file_path, feature_version=(major, minor))
-                break
-            except SyntaxError:
-                continue
-        
-        # ИСПРАВЛЕНО: Если парсинг AST прошел успешно, возвращаем только "умные" токены.
-        # Построчный анализ теперь только для fallback-сценария.
+
+        # 1. Применяем "умный" AST-парсер с отслеживанием переменных.
+        try:
+            tree = ast.parse(source, filename=file_path)
+        except SyntaxError:
+            pass # Игнорируем синтаксические ошибки, переходя к построчному сканированию
+
         if tree:
-            visitor = ConcatFoldingVisitor(file_path)
+            visitor = SecretReconstructor(file_path)
             visitor.visit(tree)
-            return visitor.get_tokens()
-        else:
-            # Если ни одна версия AST не подошла, переключаемся на построчный анализ
-            return self._fallback_line_scan(source, file_path)
+            all_tokens.extend(visitor.get_tokens())
+
+        # 2. Всегда добавляем полное построчное сканирование файла.
+        # Это гарантирует, что правила, которые ищут паттерны в целых строках
+        # (например, 'password = "..."'), будут работать корректно.
+        all_tokens.extend(self._fallback_line_scan(source, file_path))
+        
+        # Удаляем дубликаты токенов, если они есть
+        unique_tokens = list({(d['value'], d['line']): d for d in all_tokens}.values())
+        return unique_tokens
 
     def _fallback_line_scan(self, source: str, file_path: str) -> List[Dict]:
         return [{"value": line, "line": i + 1, "file": file_path} for i, line in enumerate(source.splitlines())]
@@ -1600,6 +2272,13 @@ class WhitelistManager:
                 return True
             
         return False
+
+# ============================================================
+# FILE: test_projects/project_alpha/boris.py
+# ============================================================
+
+OAUTH_ID = 'VY^&*&7776f6rgwvt687trv789w3nf85y4569'
+AVITO_PORN_YANDEX = 'eR54UUy9OL34'
 
 # ============================================================
 # FILE: test_projects/project_alpha/data_processing_pipeline.py
@@ -2582,6 +3261,237 @@ if __name__ == '__main__':
     # ...
     # ...
     -
+
+# ============================================================
+# FILE: test_projects/project_alpha/test_gpt.py
+# ============================================================
+
+import random
+import time
+import json
+import os
+
+# ---- hardcoded secrets ----
+API_KEY = "1234567890-SECRET-KEY"
+DB_PASSWORD = "root_password_123"
+ADMIN_EMAIL = "admin@example.com"
+
+# ---- global leaking containers ----
+GLOBAL_DATA = []
+CACHE = {}
+OPEN_FILES = []
+
+class DataGenerator:
+    def __init__(self):
+        self.data = []
+
+    def generate(self, count):
+        for i in range(count):
+            item = {
+                "id": i,
+                "value": random.random(),
+                "timestamp": time.time(),
+                "secret": API_KEY
+            }
+            self.data.append(item)
+            GLOBAL_DATA.append(item)
+
+    def leak(self):
+        for i in range(1000):
+            GLOBAL_DATA.append({"junk": random.random()})
+
+class FileLeaker:
+    def __init__(self):
+        self.handles = []
+
+    def open_files(self, n):
+        for i in range(n):
+            f = open("tempfile_" + str(i) + ".txt", "w")
+            f.write("test " + str(i))
+            self.handles.append(f)
+            OPEN_FILES.append(f)
+
+    def leak_more(self):
+        for i in range(50):
+            f = open("leak_" + str(i) + ".txt", "w")
+            f.write("leaking")
+            OPEN_FILES.append(f)
+
+class CacheSystem:
+    def __init__(self):
+        self.cache = {}
+
+    def store(self, key, value):
+        self.cache[key] = value
+        CACHE[key] = value
+
+    def fill_cache(self):
+        for i in range(10000):
+            key = "key_" + str(i)
+            value = "value_" + str(random.random())
+            self.store(key, value)
+
+class JsonLeaker:
+    def __init__(self):
+        self.records = []
+
+    def create_records(self, n):
+        for i in range(n):
+            rec = {
+                "user": "user_" + str(i),
+                "password": DB_PASSWORD,
+                "data": [random.random() for _ in range(10)]
+            }
+            self.records.append(rec)
+            GLOBAL_DATA.append(rec)
+
+    def export(self):
+        text = json.dumps(self.records)
+        GLOBAL_DATA.append(text)
+
+class Worker:
+    def __init__(self, wid):
+        self.wid = wid
+        self.local = []
+
+    def process(self):
+        for i in range(500):
+            val = random.random()
+            obj = {"worker": self.wid, "v": val}
+            self.local.append(obj)
+            GLOBAL_DATA.append(obj)
+
+class EndlessLeaker:
+    def __init__(self):
+        self.store = []
+
+    def run(self, loops):
+        for i in range(loops):
+            data = [random.random() for _ in range(100)]
+            self.store.append(data)
+            GLOBAL_DATA.append(data)
+
+def create_workers(n):
+    workers = []
+    for i in range(n):
+        w = Worker(i)
+        workers.append(w)
+    return workers
+
+def simulate_workers():
+    workers = create_workers(5)
+    for w in workers:
+        w.process()
+
+def heavy_leak():
+    local = []
+    for i in range(2000):
+        arr = [random.random() for _ in range(50)]
+        local.append(arr)
+        GLOBAL_DATA.append(arr)
+
+def unused_objects():
+    temp = []
+    for i in range(1000):
+        obj = {"a": random.random(), "b": random.random()}
+        temp.append(obj)
+        GLOBAL_DATA.append(obj)
+
+def leak_strings():
+    for i in range(5000):
+        s = "string_" + str(i) + "_" + str(random.random())
+        GLOBAL_DATA.append(s)
+
+def recursive_leak(depth):
+    if depth <= 0:
+        return []
+    data = [random.random() for _ in range(20)]
+    GLOBAL_DATA.append(data)
+    return recursive_leak(depth - 1)
+
+def make_temp_files():
+    for i in range(20):
+        f = open("tmp_" + str(i) + ".txt", "w")
+        f.write("temp")
+        OPEN_FILES.append(f)
+
+def fake_database_dump():
+    dump = []
+    for i in range(1000):
+        rec = {
+            "id": i,
+            "email": "user" + str(i) + "@mail.com",
+            "password": DB_PASSWORD
+        }
+        dump.append(rec)
+        GLOBAL_DATA.append(rec)
+
+def create_large_lists():
+    lists = []
+    for i in range(200):
+        arr = [random.random() for _ in range(1000)]
+        lists.append(arr)
+        GLOBAL_DATA.append(arr)
+
+def duplicate_cache():
+    for i in range(1000):
+        CACHE["dup_" + str(i)] = [random.random() for _ in range(100)]
+
+def leak_objects():
+    objs = []
+    for i in range(1000):
+        objs.append(object())
+    GLOBAL_DATA.append(objs)
+
+def simulate_api_calls():
+    responses = []
+    for i in range(300):
+        resp = {
+            "status": 200,
+            "api_key": API_KEY,
+            "data": [random.random() for _ in range(30)]
+        }
+        responses.append(resp)
+    GLOBAL_DATA.append(responses)
+
+def main():
+    gen = DataGenerator()
+    gen.generate(500)
+    gen.leak()
+
+    fl = FileLeaker()
+    fl.open_files(10)
+    fl.leak_more()
+
+    cache = CacheSystem()
+    cache.fill_cache()
+
+    jl = JsonLeaker()
+    jl.create_records(200)
+    jl.export()
+
+    simulate_workers()
+
+    endless = EndlessLeaker()
+    endless.run(50)
+
+    heavy_leak()
+    unused_objects()
+    leak_strings()
+    recursive_leak(30)
+    make_temp_files()
+    fake_database_dump()
+    create_large_lists()
+    duplicate_cache()
+    leak_objects()
+    simulate_api_calls()
+
+    print("GLOBAL_DATA size:", len(GLOBAL_DATA))
+    print("CACHE size:", len(CACHE))
+    print("OPEN FILES:", len(OPEN_FILES))
+
+if __name__ == "__main__":
+    main()
 
 # ============================================================
 # FILE: tests/__init__.py

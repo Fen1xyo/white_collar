@@ -1,17 +1,55 @@
-# secret-scanner/scanner/parsers/python_parser.py
-
+# scanner/parsers/python_parser.py
 import ast
 import re
 import sys
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Union, Any
 import chardet
 from .base import BaseParser
 
-class ConcatFoldingVisitor(ast.NodeVisitor):
-    """ AST Visitor для рекурсивного вычисления строковых выражений. """
+class SecretReconstructor(ast.NodeVisitor):
+    """
+    Продвинутый AST Visitor, который отслеживает присваивания переменных
+    и реконструирует строки, собранные из частей.
+    """
     def __init__(self, file_path: str):
         self.file_path = file_path
+        self.symbol_table: Dict[str, Any] = {}  # Таблица для хранения значений переменных
         self.tokens: List[Dict] = []
+
+    def _evaluate_node(self, node: ast.AST) -> Any:
+        """Рекурсивно вычисляет значение узла AST."""
+        if isinstance(node, ast.Constant):
+            return node.value
+        if sys.version_info < (3, 8) and isinstance(node, ast.Str):
+            return node.s
+        if isinstance(node, ast.Name):
+            return self.symbol_table.get(node.id)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = self._evaluate_node(node.left)
+            right = self._evaluate_node(node.right)
+            if left is not None and right is not None:
+                try:
+                    return left + right
+                except TypeError:
+                    return None
+        if isinstance(node, ast.JoinedStr): # f-string
+            parts = [self._evaluate_node(v) for v in node.values]
+            if all(p is not None for p in parts):
+                return "".join(map(str, parts))
+        if isinstance(node, ast.FormattedValue):
+            return self._evaluate_node(node.value)
+        return None
+
+    def visit_Assign(self, node: ast.Assign):
+        """Посещает узлы присваивания (var = value)."""
+        value = self._evaluate_node(node.value)
+        if value is not None:
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.symbol_table[target.id] = value
+            # Добавляем реконструированное значение как токен
+            self.tokens.append({"value": str(value), "line": node.lineno, "file": self.file_path})
+        self.generic_visit(node)
 
     def visit_Constant(self, node: ast.Constant):
         if isinstance(node.value, str):
@@ -23,38 +61,11 @@ class ConcatFoldingVisitor(ast.NodeVisitor):
             self.tokens.append({"value": node.s, "line": node.lineno, "file": self.file_path})
         self.generic_visit(node)
 
-    def visit_BinOp(self, node: ast.BinOp):
-        if isinstance(node.op, ast.Add):
-            left_val = self._get_str_value(node.left)
-            right_val = self._get_str_value(node.right)
-            if left_val is not None and right_val is not None:
-                self.tokens.append({"value": left_val + right_val, "line": node.lineno, "file": self.file_path})
-                return
-        self.generic_visit(node)
-
-    def _get_str_value(self, node: ast.AST) -> Optional[str]:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
-        if hasattr(ast, 'Str') and isinstance(node, ast.Str):
-            return node.s
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            left = self._get_str_value(node.left)
-            right = self._get_str_value(node.right)
-            if left is not None and right is not None:
-                return left + right
-        return None
-
     def get_tokens(self) -> List[Dict]:
         return self.tokens
 
 class PythonParser(BaseParser):
     """ Продвинутый парсер для Python. """
-    CURRENT_PY_VERSION = (sys.version_info.major, sys.version_info.minor)
-    OLDEST_SUPPORTED_MINOR = 8
-    PYTHON_VERSIONS = [
-        (3, minor) for minor in range(CURRENT_PY_VERSION[1], OLDEST_SUPPORTED_MINOR - 1, -1)
-    ] if CURRENT_PY_VERSION[0] == 3 and CURRENT_PY_VERSION[1] >= OLDEST_SUPPORTED_MINOR else [(3, OLDEST_SUPPORTED_MINOR)]
-    
     CODING_RE = re.compile(br'^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)')
 
     def _detect_encoding(self, raw_bytes: bytes) -> str:
@@ -77,30 +88,35 @@ class PythonParser(BaseParser):
             raw_bytes = content.encode('utf-8', errors='replace')
         else:
             raw_bytes = content
-
+        
         encoding = self._detect_encoding(raw_bytes)
         try:
             source = raw_bytes.decode(encoding, errors='replace')
         except (UnicodeDecodeError, TypeError):
-            return self._fallback_line_scan(raw_bytes.decode('utf-8', errors='replace'), file_path)
+            source = raw_bytes.decode('utf-8', errors='replace')
 
+        all_tokens = []
         tree: Optional[ast.AST] = None
-        for major, minor in self.PYTHON_VERSIONS:
-            try:
-                tree = ast.parse(source, filename=file_path, feature_version=(major, minor))
-                break
-            except SyntaxError:
-                continue
-        
-        # ИСПРАВЛЕНО: Если парсинг AST прошел успешно, возвращаем только "умные" токены.
-        # Построчный анализ теперь только для fallback-сценария.
+
+        # 1. Применяем "умный" AST-парсер с отслеживанием переменных.
+        try:
+            tree = ast.parse(source, filename=file_path)
+        except SyntaxError:
+            pass # Игнорируем синтаксические ошибки, переходя к построчному сканированию
+
         if tree:
-            visitor = ConcatFoldingVisitor(file_path)
+            visitor = SecretReconstructor(file_path)
             visitor.visit(tree)
-            return visitor.get_tokens()
-        else:
-            # Если ни одна версия AST не подошла, переключаемся на построчный анализ
-            return self._fallback_line_scan(source, file_path)
+            all_tokens.extend(visitor.get_tokens())
+
+        # 2. Всегда добавляем полное построчное сканирование файла.
+        # Это гарантирует, что правила, которые ищут паттерны в целых строках
+        # (например, 'password = "..."'), будут работать корректно.
+        all_tokens.extend(self._fallback_line_scan(source, file_path))
+        
+        # Удаляем дубликаты токенов, если они есть
+        unique_tokens = list({(d['value'], d['line']): d for d in all_tokens}.values())
+        return unique_tokens
 
     def _fallback_line_scan(self, source: str, file_path: str) -> List[Dict]:
         return [{"value": line, "line": i + 1, "file": file_path} for i, line in enumerate(source.splitlines())]
