@@ -214,6 +214,1358 @@ def main():
 if __name__ == "__main__":
     main()
 
+<!-- ============================================================ -->
+<!-- FILE: secret_scan_report.html -->
+<!-- ============================================================ -->
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Отчет по анализу безопасности</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #F5F4F0;
+            --card: #FFFFFF;
+            --text: #0A0A0A;
+            --muted: #7A7A7A;
+            --border: #E2E0D8;
+            --red: #C8102E;
+            --red-light: #FFF0F2;
+            --red-mid: #F5C6CE;
+            --orange: #E8610A;
+            --blue: #1A56DB;
+            --green: #0A7A4B;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow: 0 4px 16px rgba(0,0,0,0.07), 0 2px 6px rgba(0,0,0,0.04);
+            --shadow-lg: 0 12px 40px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(200,16,46,0.04) 0%, transparent 50%),
+                radial-gradient(circle at 85% 20%, rgba(26,86,219,0.04) 0%, transparent 45%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2.5rem 2rem;
+            font-size: 14px;
+        }
+
+        .container { max-width: 1280px; margin: 0 auto; }
+
+        /* ── HEADER ── */
+        header {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 2rem;
+            margin-bottom: 3rem;
+            padding: 2.5rem 3rem;
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--red) 0%, #FF5372 50%, var(--red) 100%);
+        }
+
+        .ties-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        /* Beautiful necktie SVG */
+        .tie-svg {
+            width: 36px;
+            height: 100px;
+            filter: drop-shadow(0 2px 4px rgba(200,16,46,0.35));
+            transition: transform 0.3s cubic-bezier(.34,1.56,.64,1);
+        }
+        .tie-svg:hover { transform: rotate(-6deg) scale(1.08); }
+        .tie-svg:nth-child(2) { transform: translateY(4px); }
+        .tie-svg:nth-child(3) { transform: translateY(2px); }
+        .tie-svg:nth-child(4) { transform: translateY(6px); }
+        .tie-svg:nth-child(2):hover { transform: translateY(4px) rotate(5deg) scale(1.08); }
+        .tie-svg:nth-child(3):hover { transform: translateY(2px) rotate(-4deg) scale(1.08); }
+        .tie-svg:nth-child(4):hover { transform: translateY(6px) rotate(6deg) scale(1.08); }
+
+        .header-center { text-align: center; }
+        header h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 2.8rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            color: var(--text);
+        }
+        header h1 span { color: var(--red); }
+        header .subtitle {
+            margin-top: 0.6rem;
+            color: var(--muted);
+            font-size: 0.9375rem;
+            font-weight: 300;
+        }
+
+        .header-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.5rem;
+        }
+        .report-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .report-date {
+            font-size: 0.8125rem;
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        /* ── STATS GRID ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 1.5rem 1.75rem;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            animation: slideUp 0.5s ease-out backwards;
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow);
+        }
+        .stat-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 3px;
+            border-radius: 0 0 var(--radius) var(--radius);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .stat-card:hover::after { opacity: 1; }
+
+        .stat-card.total::after { background: var(--text); }
+        .stat-card.critical::after { background: var(--red); }
+        .stat-card.high::after { background: var(--orange); }
+        .stat-card.medium::after { background: var(--blue); }
+
+        .stat-card:nth-child(1) { animation-delay: 0.05s; }
+        .stat-card:nth-child(2) { animation-delay: 0.1s; }
+        .stat-card:nth-child(3) { animation-delay: 0.15s; }
+        .stat-card:nth-child(4) { animation-delay: 0.2s; }
+
+        .stat-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+        .stat-icon svg { width: 18px; height: 18px; }
+
+        .total .stat-icon  { background: #F0F0EE; color: var(--text); }
+        .critical .stat-icon { background: var(--red-light); color: var(--red); }
+        .high .stat-icon    { background: #FFF4EC; color: var(--orange); }
+        .medium .stat-icon  { background: #EEF3FF; color: var(--blue); }
+
+        .stat-label {
+            font-size: 0.8125rem;
+            color: var(--muted);
+            font-weight: 400;
+            margin-bottom: 0.3rem;
+        }
+        .stat-value {
+            font-family: 'Syne', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .critical .stat-value { color: var(--red); }
+        .high .stat-value { color: var(--orange); }
+        .medium .stat-value { color: var(--blue); }
+
+        /* ── CHARTS ── */
+        .charts-section {
+            display: grid;
+            grid-template-columns: 320px 1fr 1fr;
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+            animation: slideUp 0.5s 0.25s ease-out backwards;
+        }
+
+        .chart-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .chart-card h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+            letter-spacing: -0.01em;
+        }
+        .chart-wrap {
+            position: relative;
+            height: 260px;
+        }
+
+        /* ── FINDINGS ── */
+        .findings-section { animation: slideUp 0.5s 0.35s ease-out backwards; }
+        .section-header {
+            display: flex;
+            align-items: baseline;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        .section-header h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .count-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--text);
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+        }
+
+        .finding {
+            background: var(--card);
+            border-radius: var(--radius-sm);
+            margin-bottom: 0.875rem;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .finding:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .finding.severity-critical .finding-header { background: #FFF8F9; }
+        .finding.severity-high .finding-header    { background: #FFFAF6; }
+        .finding.severity-medium .finding-header  { background: #F6F9FF; }
+        .finding.severity-low .finding-header     { background: #F5FDF8; }
+
+        .rule-name {
+            font-weight: 600;
+            font-size: 0.9375rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .rule-name::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .severity-critical .rule-name::before { background: var(--red); }
+        .severity-high .rule-name::before     { background: var(--orange); }
+        .severity-medium .rule-name::before   { background: var(--blue); }
+        .severity-low .rule-name::before      { background: var(--green); }
+
+        .sev-pill {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            color: white;
+        }
+        .severity-critical .sev-pill { background: var(--red); }
+        .severity-high .sev-pill     { background: var(--orange); }
+        .severity-medium .sev-pill   { background: var(--blue); }
+        .severity-low .sev-pill      { background: var(--green); }
+
+        .finding-body {
+            padding: 1.25rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem 1.5rem;
+        }
+        .finding-field { display: flex; flex-direction: column; gap: 0.2rem; }
+        .finding-field.full { grid-column: 1 / -1; }
+        .field-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .field-value {
+            font-size: 0.8125rem;
+            font-family: 'DM Mono', 'Courier New', monospace;
+            background: var(--bg);
+            padding: 0.35rem 0.6rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            word-break: break-all;
+        }
+        .field-value.secret { color: var(--red); font-weight: 600; }
+        pre.line-content {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-family: 'DM Mono', 'Courier New', monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+        .remediation-box {
+            grid-column: 1 / -1;
+            background: #F0F9FF;
+            border: 1px solid #BAE6FD;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.8125rem;
+            color: #0C4A6E;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .remediation-box::before { content: '💡'; flex-shrink: 0; }
+
+        /* ── NO FINDINGS ── */
+        .no-findings {
+            text-align: center;
+            padding: 5rem 2rem;
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+        .no-findings .shield { font-size: 3.5rem; line-height: 1; }
+        .no-findings h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 700;
+            margin-top: 1rem;
+        }
+        .no-findings p { color: var(--muted); margin-top: 0.5rem; }
+
+        /* ── FOOTER ── */
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.75rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            color: var(--muted);
+            font-size: 0.8125rem;
+        }
+        footer span { font-weight: 500; }
+        .croc-img {
+            height: 24px;
+            width: auto;
+            object-fit: contain;
+            vertical-align: middle;
+            filter: grayscale(20%);
+        }
+
+        /* ── ANIMATIONS ── */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 1024px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .charts-section { grid-template-columns: 1fr 1fr; }
+            .charts-section .chart-card:last-child { grid-column: 1 / -1; }
+        }
+        @media (max-width: 700px) {
+            body { padding: 1rem; }
+            header { grid-template-columns: 1fr; text-align: center; padding: 2rem 1.5rem; }
+            .ties-row, .header-badge { justify-content: center; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .charts-section { grid-template-columns: 1fr; }
+            .finding-body { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    
+
+    <!-- HEADER -->
+    <header>
+        <div class="ties-row">
+            <!-- Tie 1 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg1" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#E8192C"/>
+                        <stop offset="100%" style="stop-color:#A00A1C"/>
+                    </linearGradient>
+                </defs>
+                <!-- Knot -->
+                <path d="M20,6 Q30,2 40,6 L44,22 Q30,28 16,22 Z" fill="#C8102E"/>
+                <!-- Neck band shadow -->
+                <rect x="24" y="20" width="12" height="6" rx="2" fill="#9A0B21"/>
+                <!-- Blade -->
+                <path d="M16,24 L24,26 L28,145 L30,155 L32,145 L36,26 L44,24 L38,80 L30,100 L22,80 Z" fill="url(#tg1)"/>
+                <!-- Highlight -->
+                <path d="M29,28 L27,130 L30,152 L30,28 Z" fill="rgba(255,255,255,0.12)"/>
+            </svg>
+            <!-- Tie 2 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg2" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#D4102A"/>
+                        <stop offset="100%" style="stop-color:#8B0818"/>
+                    </linearGradient>
+                </defs>
+                <path d="M18,8 Q30,3 42,8 L45,24 Q30,30 15,24 Z" fill="#C0102C"/>
+                <rect x="24" y="22" width="12" height="6" rx="2" fill="#8B0818"/>
+                <path d="M15,26 L24,28 L27,148 L30,158 L33,148 L36,28 L45,26 L40,82 L30,102 L20,82 Z" fill="url(#tg2)"/>
+                <path d="M29,30 L27,132 L30,155 L30,30 Z" fill="rgba(255,255,255,0.10)"/>
+            </svg>
+            <!-- Tie 3 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg3" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#E82035"/>
+                        <stop offset="100%" style="stop-color:#9E0C1E"/>
+                    </linearGradient>
+                </defs>
+                <path d="M19,7 Q30,2 41,7 L44,23 Q30,29 16,23 Z" fill="#C8102E"/>
+                <rect x="24" y="21" width="12" height="6" rx="2" fill="#960B1E"/>
+                <path d="M16,25 L24,27 L28,146 L30,156 L32,146 L36,27 L44,25 L39,81 L30,101 L21,81 Z" fill="url(#tg3)"/>
+                <path d="M29,29 L27,130 L30,153 L30,29 Z" fill="rgba(255,255,255,0.13)"/>
+            </svg>
+            <!-- Tie 4 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg4" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#DC1428"/>
+                        <stop offset="100%" style="stop-color:#920A1C"/>
+                    </linearGradient>
+                </defs>
+                <path d="M17,9 Q30,4 43,9 L46,25 Q30,31 14,25 Z" fill="#BE0F28"/>
+                <rect x="24" y="23" width="12" height="6" rx="2" fill="#8A0B1A"/>
+                <path d="M14,27 L24,29 L27,147 L30,157 L33,147 L36,29 L46,27 L41,83 L30,103 L19,83 Z" fill="url(#tg4)"/>
+                <path d="M29,31 L27,131 L30,154 L30,31 Z" fill="rgba(255,255,255,0.11)"/>
+            </svg>
+        </div>
+
+        <div class="header-center">
+            <h1>Белые <span>воротнички</span></h1>
+            <p class="subtitle">Отчет по анализу безопасности</p>
+        </div>
+
+        <div class="header-badge">
+            <span class="report-label">Security Report</span>
+            <span class="report-date">Отчёт об угрозах</span>
+        </div>
+    </header>
+
+    <!-- STATS -->
+    <div class="stats-grid">
+        <div class="stat-card total">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="stat-label">Всего угроз</div>
+            <div class="stat-value">23</div>
+        </div>
+        <div class="stat-card critical">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.636-1.214 2.86-1.214 3.496 0l5.166 9.868c.61 1.168-.29 2.633-1.645 2.633H4.736c-1.355 0-2.255-1.465-1.645-2.633l5.166-9.868zM10 13a1 1 0 110-2 1 1 0 010 2zm-1.75-5.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="stat-label">Критический</div>
+            <div class="stat-value">7</div>
+        </div>
+        <div class="stat-card high">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="stat-label">Высокий</div>
+            <div class="stat-value">9</div>
+        </div>
+        <div class="stat-card medium">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="stat-label">Средний</div>
+            <div class="stat-value">7</div>
+        </div>
+    </div>
+
+    <!-- CHARTS -->
+    
+    <div class="charts-section">
+        <div class="chart-card">
+            <h3>По критичности</h3>
+            <div class="chart-wrap"><canvas id="severityChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>Топ-5 правил</h3>
+            <div class="chart-wrap"><canvas id="rulesChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>Топ-10 файлов</h3>
+            <div class="chart-wrap"><canvas id="filesChart"></canvas></div>
+        </div>
+    </div>
+    
+
+    <!-- FINDINGS -->
+    <div class="findings-section">
+        <div class="section-header">
+            <h2>Детали находок</h2>
+            
+            <span class="count-badge">23</span>
+            
+        </div>
+
+        
+
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic Secret by Keyword (20+ chars)</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/boris.py:1</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.50</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">VY^&amp;*&amp;7776f6rgwvt687trv789w3nf85y4569</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>OAUTH_ID = &#39;VY^&amp;*&amp;7776f6rgwvt687trv789w3nf85y4569&#39;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-medium">
+            <div class="finding-header">
+                <span class="rule-name">Short or Numeric Password</span>
+                <span class="sev-pill">MEDIUM</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/boris.py:3</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.50</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">131313130</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>psswrd = 131313130</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Избегайте использования слабых или легко угадываемых паролей, даже в тестовом коде. Используйте менеджеры секретов.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-medium">
+            <div class="finding-header">
+                <span class="rule-name">Short or Numeric Password</span>
+                <span class="sev-pill">MEDIUM</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/boris.py:4</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.50</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">103114</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>pswd = 103114</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Избегайте использования слабых или легко угадываемых паролей, даже в тестовом коде. Используйте менеджеры секретов.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic API Key (Suffix Match)</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/boris.py:6</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.50</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">a%1313</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>p_api = &#34;a%1313&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-critical">
+            <div class="finding-header">
+                <span class="rule-name">Telegram Bot API Token</span>
+                <span class="sev-pill">CRITICAL</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/data_processing_pipeline.py:16</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">1234567890:AAG-AbcDef1234567890GhiJkl-MnoPqrSt</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>TELEGRAM_BOT_TOKEN = &#34;1234567890:AAG-AbcDef1234567890GhiJkl-MnoPqrSt&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Немедленно отзовите токен командой /revoke у @BotFather. Передавайте токен через переменную окружения.
+</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-critical">
+            <div class="finding-header">
+                <span class="rule-name">Yandex Cloud IAM Token</span>
+                <span class="sev-pill">CRITICAL</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/data_processing_pipeline.py:21</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">t1.9euelZqPj56LmcaPk56OkZOLkZGLm-3rnpWaj5bHlZCOj5rPlY6NnZCLk5fl8_t9G09R-e9YF0Zg_t3z931RTfnvWBdGYA.a-b_cDefGHIjklmnoPQRstuvwxYZ1234567890ABCdefghiJKLMnopqrstuvWXYZabcdefghijKLMNOpqrstuvwxyz123456789</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>YANDEX_IAM_TOKEN = &#34;t1.9euelZqPj56LmcaPk56OkZOLkZGLm-3rnpWaj5bHlZCOj5rPlY6NnZCLk5fl8_t9G09R-e9YF0Zg_t3z931RTfnvWBdGYA.a-b_cDefGHIjklmnoPQRstuvwxYZ1234567890ABCdefghiJKLMnopqrstuvWXYZabcdefghijKLMNOpqrstuvwxyz123456789&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">IAM-токены живут максимум 12 часов. Если токен старше — возможно, уже истёк, но его следует отозвать. Используйте сервисный аккаунт и авторизованные ключи для долгоживущих процессов.
+</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-critical">
+            <div class="finding-header">
+                <span class="rule-name">Private Key</span>
+                <span class="sev-pill">CRITICAL</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/data_processing_pipeline.py:24</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">-----BEGIN RSA PRIVATE KEY-----</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>SSH_PRIVATE_KEY = &#34;&#34;&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Никогда не храните приватные ключи в репозиториях. Немедленно отозвите скомпрометированный ключ и перевыпустите пару ключей.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-critical">
+            <div class="finding-header">
+                <span class="rule-name">Private Key</span>
+                <span class="sev-pill">CRITICAL</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/data_processing_pipeline.py:25</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.90</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">-----BEGIN RSA PRIVATE KEY-----</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>-----BEGIN RSA PRIVATE KEY-----</code></pre>
+                </div>
+                
+                <div class="remediation-box">Никогда не храните приватные ключи в репозиториях. Немедленно отозвите скомпрометированный ключ и перевыпустите пару ключей.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-critical">
+            <div class="finding-header">
+                <span class="rule-name">Telegram Bot API Token</span>
+                <span class="sev-pill">CRITICAL</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/data_processing_pipeline.py:126</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">1234567890:AAG-AbcDef1234567890GhiJkl-MnoPqrSt</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>    url = f&#34;https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Немедленно отзовите токен командой /revoke у @BotFather. Передавайте токен через переменную окружения.
+</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-medium">
+            <div class="finding-header">
+                <span class="rule-name">Short or Numeric Password</span>
+                <span class="sev-pill">MEDIUM</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/database_and_api_services.py:29</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.50</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">MYSqL_p@ss_</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        self.mysql_pass = &#34;MYSqL_p@ss_&#34; + &#34;2024_!&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Избегайте использования слабых или легко угадываемых паролей, даже в тестовом коде. Используйте менеджеры секретов.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-medium">
+            <div class="finding-header">
+                <span class="rule-name">Short or Numeric Password</span>
+                <span class="sev-pill">MEDIUM</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/database_and_api_services.py:33</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.50</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">redis_old_password_123</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        # self.redis_pass = &#34;redis_old_password_123&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Избегайте использования слабых или легко угадываемых паролей, даже в тестовом коде. Используйте менеджеры секретов.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-critical">
+            <div class="finding-header">
+                <span class="rule-name">AWS Access Key ID</span>
+                <span class="sev-pill">CRITICAL</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/database_and_api_services.py:68</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">AKIAIOSFODNN7EXAMPLE</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        self.aws_access_key = &#34;AKIAIOSFODNN7EXAMPLE&#34; </code></pre>
+                </div>
+                
+                <div class="remediation-box">Немедленно отозвать ключ в консоли AWS IAM. Для аутентификации приложений использовать IAM-роли или переменные окружения.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-medium">
+            <div class="finding-header">
+                <span class="rule-name">Generic Secret by Keyword (12+ chars)</span>
+                <span class="sev-pill">MEDIUM</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/database_and_api_services.py:69</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.70</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">wJalrXUtnFEMI</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        self.aws_secret_key = &#34;wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic API Key (Suffix Match)</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/database_and_api_services.py:72</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.70</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">sk_live_51H</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        self.stripe_api_key = &#34;sk_live_51H...AbcDefGhiJklMnoPqrStuVwxYz&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic Secret by Keyword (20+ chars)</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/database_and_api_services.py:80</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.70</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">example-api-key-meant-for-documentation</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        self.example_key = &#34;example-api-key-meant-for-documentation&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">1C-Bitrix Webhook URL</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/legacy_web_app.py:14</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>BITRIX_WEBHOOK_URL = &#34;https://myportal.bitrix24.ru/rest/1/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Удалите вебхук в настройках портала Bitrix24 (Разработчикам → Входящие webhook). Создайте новый и передавайте его URL через переменную окружения.
+</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic API Key (Suffix Match)</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/legacy_web_app.py:15</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.50</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">a%1313</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>papi = &#34;a%1313&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic API Key</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/legacy_web_app.py:18</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">8f7d6e5c4b3a2d1e8f7d6e5c4b3a2d1e</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>LEGACY_API_CONFIG = &#34;api-key: 8f7d6e5c4b3a2d1e8f7d6e5c4b3a2d1e&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли этот ключ чувствительным. Если да, переместите его в переменные окружения или секрет-менеджер (например, HashiCorp Vault, AWS Secrets Manager).</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-critical">
+            <div class="finding-header">
+                <span class="rule-name">Yandex Cloud API Key</span>
+                <span class="sev-pill">CRITICAL</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/legacy_web_app.py:24</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.90</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">AQVNa1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code># YANDEX_API_KEY = &#34;AQVNa1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Немедленно отзовите ключ в консоли Yandex Cloud: IAM → Сервисные аккаунты → [ваш аккаунт] → API-ключи. Создайте новый и передавайте через переменную окружения или секрет в Yandex Lockbox.
+</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-medium">
+            <div class="finding-header">
+                <span class="rule-name">Short or Numeric Password</span>
+                <span class="sev-pill">MEDIUM</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/legacy_web_app.py:67</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.70</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">password123</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        demo_password = &#34;password123&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Избегайте использования слабых или легко угадываемых паролей, даже в тестовом коде. Используйте менеджеры секретов.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic API Key</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/legacy_web_app.py:83</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">1.00</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">LEGACY_API_CONFIG</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>        api_key = LEGACY_API_CONFIG.split(&#39;:&#39;)[1].strip()</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли этот ключ чувствительным. Если да, переместите его в переменные окружения или секрет-менеджер (например, HashiCorp Vault, AWS Secrets Manager).</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-high">
+            <div class="finding-header">
+                <span class="rule-name">Generic Secret by Keyword (20+ chars)</span>
+                <span class="sev-pill">HIGH</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/test_gpt.py:7</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.70</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">1234567890-SECRET-KEY</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>API_KEY = &#34;1234567890-SECRET-KEY&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+        <div class="finding severity-medium">
+            <div class="finding-header">
+                <span class="rule-name">Generic Secret by Keyword (12+ chars)</span>
+                <span class="sev-pill">MEDIUM</span>
+            </div>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">./test_projects/project_alpha/test_gpt.py:8</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">0.70</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">root_password_123</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>DB_PASSWORD = &#34;root_password_123&#34;</code></pre>
+                </div>
+                
+                <div class="remediation-box">Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер.</div>
+                
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+        <span>Powered by</span>
+        <img
+            class="croc-img"
+            src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/CROC_Incorporated.png/250px-CROC_Incorporated.png"
+            alt="КРОК"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';"
+        />
+        <span style="display:none; font-weight:700; letter-spacing:0.05em;">КРОК</span>
+    </footer>
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    try {
+        const stats = {"by_file": {"./test_projects/project_alpha/boris.py": 4, "./test_projects/project_alpha/data_processing_pipeline.py": 5, "./test_projects/project_alpha/database_and_api_services.py": 6, "./test_projects/project_alpha/legacy_web_app.py": 6, "./test_projects/project_alpha/test_gpt.py": 2}, "by_rule": {"1C-Bitrix Webhook URL": 1, "AWS Access Key ID": 1, "Generic API Key": 2, "Generic API Key (Suffix Match)": 3, "Generic Secret by Keyword (12+ chars)": 2, "Generic Secret by Keyword (20+ chars)": 3, "Private Key": 2, "Short or Numeric Password": 5, "Telegram Bot API Token": 2, "Yandex Cloud API Key": 1, "Yandex Cloud IAM Token": 1}, "by_severity": {"CRITICAL": 7, "HIGH": 9, "LOW": 0, "MEDIUM": 7}, "top_files": {"./test_projects/project_alpha/boris.py": 4, "./test_projects/project_alpha/data_processing_pipeline.py": 5, "./test_projects/project_alpha/database_and_api_services.py": 6, "./test_projects/project_alpha/legacy_web_app.py": 6, "./test_projects/project_alpha/test_gpt.py": 2}, "top_rules": {"Generic API Key (Suffix Match)": 3, "Generic Secret by Keyword (20+ chars)": 3, "Private Key": 2, "Short or Numeric Password": 5, "Telegram Bot API Token": 2}};
+        const font = { family: 'DM Sans', size: 12 };
+
+        // 1. Doughnut — severity
+        const sCtx = document.getElementById('severityChart');
+        if (sCtx) {
+            new Chart(sCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+                    datasets: [{
+                        data: [
+                            stats.by_severity.CRITICAL,
+                            stats.by_severity.HIGH,
+                            stats.by_severity.MEDIUM,
+                            stats.by_severity.LOW
+                        ],
+                        backgroundColor: ['#C8102E', '#E8610A', '#1A56DB', '#0A7A4B'],
+                        borderColor: '#FFFFFF',
+                        borderWidth: 4,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '72%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { font, padding: 14, boxWidth: 12, boxHeight: 12, borderRadius: 3 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. Bar — top rules
+        const rCtx = document.getElementById('rulesChart');
+        if (rCtx && Object.keys(stats.top_rules).length > 0) {
+            new Chart(rCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(stats.top_rules),
+                    datasets: [{
+                        data: Object.values(stats.top_rules),
+                        backgroundColor: [
+                            'rgba(200,16,46,0.85)',
+                            'rgba(232,97,10,0.85)',
+                            'rgba(26,86,219,0.85)',
+                            'rgba(10,122,75,0.85)',
+                            'rgba(124,58,237,0.85)'
+                        ],
+                        borderRadius: 6,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font, maxRotation: 25 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#F0EEE8', drawBorder: false },
+                            ticks: { font, precision: 0 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 3. Horizontal bar — top files
+        const fCtx = document.getElementById('filesChart');
+        if (fCtx && Object.keys(stats.top_files).length > 0) {
+            new Chart(fCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(stats.top_files).map(l =>
+                        l.length > 32 ? '…' + l.slice(-29) : l
+                    ),
+                    datasets: [{
+                        data: Object.values(stats.top_files),
+                        backgroundColor: 'rgba(200,16,46,0.12)',
+                        borderColor: 'rgba(200,16,46,0.8)',
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: { color: '#F0EEE8', drawBorder: false },
+                            ticks: { font, precision: 0 }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { font }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.error("Chart render error:", e);
+    }
+});
+</script>
+
+</body>
+</html>
+
 # ============================================================
 # FILE: cli/__init__.py
 # ============================================================
@@ -381,6 +1733,18 @@ rules:
   # ===========================================================================
   # GENERIC — общие правила по ключевым словам
   # ===========================================================================
+
+  # НОВОЕ ПРАВИЛО для секретов в C/C++ #define
+  - id: C_DEFINE_SECRET
+    name: "Secret in C/C++ #define"
+    # ИСПРАВЛЕНО: флаг (?i) перенесен в начало выражения.
+    pattern: >-
+      (?i)^\s*#\s*define\s+(?:\w*(?:key|secret|token|password|auth|api)\w*)\s+"([a-zA-Z0-9\-_!@#$%^&*()\/+%]{8,})"
+    severity: HIGH
+    description: "Обнаружен потенциальный секрет в директиве препроцессора #define. Это частый способ хранения ключей в C/C++."
+    remediation: "Избегайте хранения секретов в исходном коде, даже в #define. Используйте переменные окружения или защищенное хранилище."
+
+
   - id: SHORT_PASSWORD_LIKE
     name: "Short or Numeric Password"
     # Ищет короткие (6+ символов) значения, присвоенные переменным с именами, похожими на "пароль".
@@ -389,6 +1753,16 @@ rules:
     severity: MEDIUM
     description: "Обнаружено короткое (6+ символов) значение, присвоенное переменной, имя которой похоже на 'пароль'. Это может быть слабый или тестовый пароль."
     remediation: "Проверьте, является ли эта строка чувствительной. Избегайте использования слабых или легко угадываемых паролей, даже в тестовом коде. Используйте менеджеры секретов."
+
+  # НОВОЕ ПРАВИЛО для гибкого поиска API ключей
+  - id: GENERIC_API_KEY_SUFFIX
+    name: "Generic API Key (Suffix Match)"
+    # Ищет переменные, оканчивающиеся на _api, -api, Api и т.д.
+    pattern: >-
+      (?i)\w*(?:api_key|api-key|apikey|[-_]api|Api)\b\s*[:=]\s*["']?([a-zA-Z0-9\-_!@#$%^&*()\/+%]{6,})["']?
+    severity: HIGH
+    description: "Обнаружен потенциальный API-ключ (найден по имени переменной, оканчивающемуся на 'api')."
+    remediation: "Проверьте, является ли эта строка чувствительной. Если да, переместите ее в переменные окружения или секрет-менеджер."
 
   - id: GENERIC_KEYWORD_SECRET_12
     name: "Generic Secret by Keyword (12+ chars)"
@@ -428,8 +1802,6 @@ rules:
       Немедленно отзовите ключ в консоли Yandex Cloud: IAM → Сервисные аккаунты →
       [ваш аккаунт] → API-ключи. Создайте новый и передавайте через переменную
       окружения или секрет в Yandex Lockbox.
-
-  # ... и так далее, вставьте сюда все остальные правила из вашего оригинального файла ...
 
 
   - id: YANDEX_LOCKBOX_SECRET
@@ -950,6 +2322,27 @@ from ..detectors.regex_detector import RegexDetector
 from ..detectors.confidence_scorer import ConfidenceScorer
 from ..whitelist.whitelist_manager import WhitelistManager
 
+# Ранги для определения "важности" правила при дедупликации
+_SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+def _deduplicate_findings(findings: List[Finding]) -> List[Finding]:
+    """
+    Убирает дубликаты. Если несколько правил нашли один и тот же секрет
+    на одной и той же строке, оставляет только находку с наивысшей критичностью (severity).
+    """
+    best_findings: Dict[tuple, Finding] = {}
+    # Ключ: (путь к файлу, номер строки, сам секрет)
+    for f in findings:
+        key = (f.file_path, f.line_number, f.secret)
+        
+        # Если находки для этого ключа еще нет, или новая находка "важнее" старой
+        if key not in best_findings or \
+           _SEVERITY_RANK.get(f.severity, 0) > _SEVERITY_RANK.get(best_findings[key].severity, 0):
+            best_findings[key] = f
+            
+    return list(best_findings.values())
+
+
 class ScanEngine:
     """
     Основной движок сканирования.
@@ -957,46 +2350,29 @@ class ScanEngine:
     """
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        # 1. Загрузка правил
         self.rules = RuleLoader(config.get('rule_paths', [])).load_rules()
-        # 2. Обходчик файлов
         self.file_walker = FileWalker(
             project_path=".",
             exclude_dirs=config.get('exclude_dirs', []),
             scan_extensions=config.get('scan_extensions', []),
         )
-        # 3. Парсеры
         self.parsers: Dict[str, BaseParser] = {
-            '.py':                PythonParser(),
-            '.c':                 CParser(),
-            '.h':                 CParser(),
-            '.cpp':               CParser(),
-            '.env':               ConfigParser(),
-            'makefile':           ConfigParser(),
-            '.yaml':              ConfigParser(),
-            '.yml':               ConfigParser(),
-            '.ini':               ConfigParser(),
-            '.cfg':               ConfigParser(),
-            '.conf':              ConfigParser(),
-            'requirements.txt':   ConfigParser(),
+            '.py': PythonParser(), '.c': CParser(), '.h': CParser(), '.cpp': CParser(),
+            '.env': ConfigParser(), 'makefile': ConfigParser(), '.yaml': ConfigParser(),
+            '.yml': ConfigParser(), '.ini': ConfigParser(), '.cfg': ConfigParser(),
+            '.conf': ConfigParser(), 'requirements.txt': ConfigParser(),
             'docker-compose.yml': ConfigParser(),
         }
         self.default_parser = ConfigParser()
-        # 4. Детекторы
-        self.detectors = [
-            RegexDetector(self.rules),
-        ]
-        # 5. Пост-обработка
+        self.detectors = [RegexDetector(self.rules)]
         self.confidence_scorer = ConfidenceScorer()
         self.whitelist_manager: Optional[WhitelistManager] = None
 
     def _get_parser(self, file_path: str) -> BaseParser:
         filename = os.path.basename(file_path).lower()
         ext = os.path.splitext(filename)[1]
-        if filename in self.parsers:
-            return self.parsers[filename]
-        if ext in self.parsers:
-            return self.parsers[ext]
+        if filename in self.parsers: return self.parsers[filename]
+        if ext in self.parsers: return self.parsers[ext]
         return self.default_parser
 
     def run(self, project_path: str, scan_git: bool = False) -> List[Finding]:
@@ -1008,39 +2384,32 @@ class ScanEngine:
         if scan_git:
             print("Запущено сканирование истории Git (это может занять время)...")
             for content, file_path, commit_hash in self.file_walker.scan_git_history():
-                findings_in_content = self._scan_content(content, file_path, commit_hash)
-                all_findings.update(findings_in_content)
+                all_findings.update(self._scan_content(content, file_path, commit_hash))
         else:
             print("Запущено сканирование файловой системы...")
             for file_path in self.file_walker.walk_files():
                 try:
                     with open(file_path, 'rb') as f:
                         raw_content = f.read()
-                    findings_in_file = self._scan_content(raw_content, file_path)
-                    all_findings.update(findings_in_file)
+                    all_findings.update(self._scan_content(raw_content, file_path))
                 except Exception as e:
                     print(f"Ошибка: не удалось обработать файл {file_path}: {e}")
 
         print(f"Сканирование завершено. Найдено уникальных потенциальных секретов: {len(all_findings)}.")
-        print("Запуск пост-обработки: оценка уверенности и применение белого списка...")
         
-        scored_findings = [self.confidence_scorer.score(f) for f in all_findings]
+        # ИСПРАВЛЕНО: добавлен шаг дедупликации
+        print("Запуск пост-обработки: дедупликация, оценка уверенности и белый список...")
+        deduplicated = _deduplicate_findings(list(all_findings))
+        
+        scored_findings = [self.confidence_scorer.score(f) for f in deduplicated]
         final_findings = self.whitelist_manager.filter(scored_findings)
         final_findings.sort(key=lambda f: (f.file_path, f.line_number, f.rule_id))
         
         return final_findings
 
-    def _scan_content(
-        self,
-        content: Any,
-        file_path: str,
-        commit: Optional[str] = None,
-    ) -> List[Finding]:
-        """
-        Сканирует содержимое одного файла.
-        """
+    def _scan_content(self, content: Any, file_path: str, commit: Optional[str] = None) -> List[Finding]:
+        """Сканирует содержимое одного файла."""
         findings = []
-        
         if isinstance(content, bytes):
             try:
                 source_str = content.decode('utf-8')
@@ -1056,10 +2425,8 @@ class ScanEngine:
         for token in tokens:
             for detector in self.detectors:
                 new_findings = detector.detect(
-                    content=token["value"],
-                    file_path=file_path,
-                    line_number=token["line"],
-                    commit=commit,
+                    content=token["value"], file_path=file_path,
+                    line_number=token["line"], commit=commit,
                 )
                 if new_findings:
                     for finding in new_findings:
@@ -1067,7 +2434,6 @@ class ScanEngine:
                         if 0 <= line_idx < len(source_lines):
                             finding.line_content = source_lines[line_idx]
                     findings.extend(new_findings)
-                    
         return findings
 
 # ============================================================
@@ -1941,17 +3307,17 @@ class ConsoleReporter(BaseReporter):
 # ============================================================
 
 # secret-scanner/scanner/reporters/html_reporter.py
-
 import os
+import json
 from typing import List, Optional
 from jinja2 import Environment, FileSystemLoader
-# ИСПРАВЛЕНО: импортируем базовый класс напрямую
 from .base import BaseReporter
 from ..core.finding import Finding
 from ..rules.rule import Rule
 
 class HTMLReporter(BaseReporter):
-    """Генерирует наглядный отчет в формате HTML."""
+    """Генерирует наглядный, автономный отчет в формате HTML с графиками."""
+
     def __init__(self, rules: List[Rule]):
         super().__init__(rules)
         template_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'web', 'templates')
@@ -1960,29 +3326,61 @@ class HTMLReporter(BaseReporter):
         self.jinja_env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
 
     def generate_report(self, findings: List[Finding], output_file: Optional[str] = None):
-        """ Основной метод для генерации HTML-отчета. """
+        """
+        Основной метод для генерации HTML-отчета.
+        Внедряет CSS и JS для создания полностью автономного файла с графиками.
+        """
         if not output_file:
             output_file = "secret_scan_report.html"
-        
+
         try:
             template = self.jinja_env.get_template('report.html')
         except Exception as e:
             print(f"Ошибка: Не удалось загрузить HTML-шаблон 'report.html': {e}")
             return
 
+        css_content = ""
+        try:
+            css_path = os.path.join(os.path.dirname(__file__), '..', '..', 'web', 'static', 'style.css')
+            with open(css_path, 'r', encoding='utf-8') as f:
+                css_content = f.read()
+        except Exception as e:
+            print(f"Предупреждение: не удалось прочитать CSS файл для внедрения в отчет: {e}")
+
+        # Агрегация данных для графиков
+        stats = {
+            "by_severity": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0},
+            "by_file": {},
+            "by_rule": {}
+        }
+        actual_findings = [f for f in findings if not f.whitelisted]
+
+        for f in actual_findings:
+            if f.severity in stats["by_severity"]:
+                stats["by_severity"][f.severity] += 1
+            
+            stats["by_file"][f.file_path] = stats["by_file"].get(f.file_path, 0) + 1
+            stats["by_rule"][f.rule_name] = stats["by_rule"].get(f.rule_name, 0) + 1
+
+        top_files = sorted(stats["by_file"].items(), key=lambda item: item[1], reverse=True)[:10]
+        stats["top_files"] = {k: v for k, v in top_files}
+
+        top_rules = sorted(stats["by_rule"].items(), key=lambda item: item[1], reverse=True)[:5]
+        stats["top_rules"] = {k: v for k, v in top_rules}
+
         findings_with_rules = []
         for f in findings:
             rule = self.rules_map.get(f.rule_id)
-            findings_with_rules.append({
-                "finding": f,
-                "rule": rule
-            })
-            
+            findings_with_rules.append({"finding": f, "rule": rule})
+
+        # ИСПРАВЛЕНО: передаем в шаблон единый объект `stats`
         html_content = template.render(
             findings_with_rules=findings_with_rules,
-            title="Отчет о сканировании секретов"
+            title="Отчет по анализу безопасности",
+            css_content=css_content,
+            stats=stats
         )
-        
+
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(html_content)
@@ -2223,10 +3621,10 @@ class WhitelistManager:
 # ============================================================
 
 OAUTH_ID = 'VY^&*&7776f6rgwvt687trv789w3nf85y4569'
-AVITO_PORN_YANDEX = 'eR54UUy9OL34'
 psswrd = 131313130
 pswd = 103114
 pas =  12415
+p_api = "a%1313"
 
 # ============================================================
 # FILE: test_projects/project_alpha/data_processing_pipeline.py
@@ -2739,7 +4137,7 @@ import base64
 
 # Вебхук для интеграции с Bitrix24, должен быть найден
 BITRIX_WEBHOOK_URL = "https://myportal.bitrix24.ru/rest/1/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
-
+papi = "a%1313"
 # Старый ключ API, используемый в системе
 # Формат: 'api-key: значение'
 LEGACY_API_CONFIG = "api-key: 8f7d6e5c4b3a2d1e8f7d6e5c4b3a2d1e"
@@ -3944,6 +5342,28 @@ h1, h2 {
     background-color: #f2dede;
     border-color: #ebccd1;
 }
+/* Стили для контейнера с графиками */
+.charts-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 40px;
+    margin-bottom: 40px;
+    height: 350px;
+}
+
+.chart-box {
+    position: relative;
+    padding: 15px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.chart-box h2 {
+    font-size: 16px;
+    margin-bottom: 15px;
+    text-align: center;
+}
 
 <!-- ============================================================ -->
 <!-- FILE: web/templates/index.html -->
@@ -3988,58 +5408,731 @@ h1, h2 {
 <head>
     <meta charset="UTF-8">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #F5F4F0;
+            --card: #FFFFFF;
+            --text: #0A0A0A;
+            --muted: #7A7A7A;
+            --border: #E2E0D8;
+            --red: #C8102E;
+            --red-light: #FFF0F2;
+            --red-mid: #F5C6CE;
+            --orange: #E8610A;
+            --blue: #1A56DB;
+            --green: #0A7A4B;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow: 0 4px 16px rgba(0,0,0,0.07), 0 2px 6px rgba(0,0,0,0.04);
+            --shadow-lg: 0 12px 40px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(200,16,46,0.04) 0%, transparent 50%),
+                radial-gradient(circle at 85% 20%, rgba(26,86,219,0.04) 0%, transparent 45%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2.5rem 2rem;
+            font-size: 14px;
+        }
+
+        .container { max-width: 1280px; margin: 0 auto; }
+
+        /* ── HEADER ── */
+        header {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 2rem;
+            margin-bottom: 3rem;
+            padding: 2.5rem 3rem;
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--red) 0%, #FF5372 50%, var(--red) 100%);
+        }
+
+        .ties-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        /* Beautiful necktie SVG */
+        .tie-svg {
+            width: 36px;
+            height: 100px;
+            filter: drop-shadow(0 2px 4px rgba(200,16,46,0.35));
+            transition: transform 0.3s cubic-bezier(.34,1.56,.64,1);
+        }
+        .tie-svg:hover { transform: rotate(-6deg) scale(1.08); }
+        .tie-svg:nth-child(2) { transform: translateY(4px); }
+        .tie-svg:nth-child(3) { transform: translateY(2px); }
+        .tie-svg:nth-child(4) { transform: translateY(6px); }
+        .tie-svg:nth-child(2):hover { transform: translateY(4px) rotate(5deg) scale(1.08); }
+        .tie-svg:nth-child(3):hover { transform: translateY(2px) rotate(-4deg) scale(1.08); }
+        .tie-svg:nth-child(4):hover { transform: translateY(6px) rotate(6deg) scale(1.08); }
+
+        .header-center { text-align: center; }
+        header h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 2.8rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            color: var(--text);
+        }
+        header h1 span { color: var(--red); }
+        header .subtitle {
+            margin-top: 0.6rem;
+            color: var(--muted);
+            font-size: 0.9375rem;
+            font-weight: 300;
+        }
+
+        .header-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.5rem;
+        }
+        .report-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .report-date {
+            font-size: 0.8125rem;
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        /* ── STATS GRID ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 1.5rem 1.75rem;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            animation: slideUp 0.5s ease-out backwards;
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow);
+        }
+        .stat-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 3px;
+            border-radius: 0 0 var(--radius) var(--radius);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .stat-card:hover::after { opacity: 1; }
+
+        .stat-card.total::after { background: var(--text); }
+        .stat-card.critical::after { background: var(--red); }
+        .stat-card.high::after { background: var(--orange); }
+        .stat-card.medium::after { background: var(--blue); }
+
+        .stat-card:nth-child(1) { animation-delay: 0.05s; }
+        .stat-card:nth-child(2) { animation-delay: 0.1s; }
+        .stat-card:nth-child(3) { animation-delay: 0.15s; }
+        .stat-card:nth-child(4) { animation-delay: 0.2s; }
+
+        .stat-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+        .stat-icon svg { width: 18px; height: 18px; }
+
+        .total .stat-icon  { background: #F0F0EE; color: var(--text); }
+        .critical .stat-icon { background: var(--red-light); color: var(--red); }
+        .high .stat-icon    { background: #FFF4EC; color: var(--orange); }
+        .medium .stat-icon  { background: #EEF3FF; color: var(--blue); }
+
+        .stat-label {
+            font-size: 0.8125rem;
+            color: var(--muted);
+            font-weight: 400;
+            margin-bottom: 0.3rem;
+        }
+        .stat-value {
+            font-family: 'Syne', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .critical .stat-value { color: var(--red); }
+        .high .stat-value { color: var(--orange); }
+        .medium .stat-value { color: var(--blue); }
+
+        /* ── CHARTS ── */
+        .charts-section {
+            display: grid;
+            grid-template-columns: 320px 1fr 1fr;
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+            animation: slideUp 0.5s 0.25s ease-out backwards;
+        }
+
+        .chart-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .chart-card h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+            letter-spacing: -0.01em;
+        }
+        .chart-wrap {
+            position: relative;
+            height: 260px;
+        }
+
+        /* ── FINDINGS ── */
+        .findings-section { animation: slideUp 0.5s 0.35s ease-out backwards; }
+        .section-header {
+            display: flex;
+            align-items: baseline;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        .section-header h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .count-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--text);
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+        }
+
+        .finding {
+            background: var(--card);
+            border-radius: var(--radius-sm);
+            margin-bottom: 0.875rem;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .finding:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .finding.severity-critical .finding-header { background: #FFF8F9; }
+        .finding.severity-high .finding-header    { background: #FFFAF6; }
+        .finding.severity-medium .finding-header  { background: #F6F9FF; }
+        .finding.severity-low .finding-header     { background: #F5FDF8; }
+
+        .rule-name {
+            font-weight: 600;
+            font-size: 0.9375rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .rule-name::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .severity-critical .rule-name::before { background: var(--red); }
+        .severity-high .rule-name::before     { background: var(--orange); }
+        .severity-medium .rule-name::before   { background: var(--blue); }
+        .severity-low .rule-name::before      { background: var(--green); }
+
+        .sev-pill {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            color: white;
+        }
+        .severity-critical .sev-pill { background: var(--red); }
+        .severity-high .sev-pill     { background: var(--orange); }
+        .severity-medium .sev-pill   { background: var(--blue); }
+        .severity-low .sev-pill      { background: var(--green); }
+
+        .finding-body {
+            padding: 1.25rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem 1.5rem;
+        }
+        .finding-field { display: flex; flex-direction: column; gap: 0.2rem; }
+        .finding-field.full { grid-column: 1 / -1; }
+        .field-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .field-value {
+            font-size: 0.8125rem;
+            font-family: 'DM Mono', 'Courier New', monospace;
+            background: var(--bg);
+            padding: 0.35rem 0.6rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            word-break: break-all;
+        }
+        .field-value.secret { color: var(--red); font-weight: 600; }
+        pre.line-content {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-family: 'DM Mono', 'Courier New', monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+        .remediation-box {
+            grid-column: 1 / -1;
+            background: #F0F9FF;
+            border: 1px solid #BAE6FD;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.8125rem;
+            color: #0C4A6E;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .remediation-box::before { content: '💡'; flex-shrink: 0; }
+
+        /* ── NO FINDINGS ── */
+        .no-findings {
+            text-align: center;
+            padding: 5rem 2rem;
+            background: var(--card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+        .no-findings .shield { font-size: 3.5rem; line-height: 1; }
+        .no-findings h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 700;
+            margin-top: 1rem;
+        }
+        .no-findings p { color: var(--muted); margin-top: 0.5rem; }
+
+        /* ── FOOTER ── */
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.75rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            color: var(--muted);
+            font-size: 0.8125rem;
+        }
+        footer span { font-weight: 500; }
+        .croc-img {
+            height: 24px;
+            width: auto;
+            object-fit: contain;
+            vertical-align: middle;
+            filter: grayscale(20%);
+        }
+
+        /* ── ANIMATIONS ── */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 1024px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .charts-section { grid-template-columns: 1fr 1fr; }
+            .charts-section .chart-card:last-child { grid-column: 1 / -1; }
+        }
+        @media (max-width: 700px) {
+            body { padding: 1rem; }
+            header { grid-template-columns: 1fr; text-align: center; padding: 2rem 1.5rem; }
+            .ties-row, .header-badge { justify-content: center; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .charts-section { grid-template-columns: 1fr; }
+            .finding-body { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🚨 {{ title }}</h1>
-        
-        {% set actual_findings = findings_with_rules|rejectattr('finding.whitelisted')|list %}
-        {% set whitelisted_findings = findings_with_rules|selectattr('finding.whitelisted')|list %}
+<div class="container">
+    {% set actual_findings = findings_with_rules|rejectattr('finding.whitelisted')|list %}
 
-        <p>Найдено реальных угроз: <strong>{{ actual_findings|length }}</strong></p>
-        
-        {% if not actual_findings %}
-            <div class="finding severity-clean">
-                <div class="finding-header">
-                    <span class="severity">Чисто</span>
-                    <span class="rule-name">Потенциальные секреты не обнаружены</span>
-                </div>
+    <!-- HEADER -->
+    <header>
+        <div class="ties-row">
+            <!-- Tie 1 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg1" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#E8192C"/>
+                        <stop offset="100%" style="stop-color:#A00A1C"/>
+                    </linearGradient>
+                </defs>
+                <!-- Knot -->
+                <path d="M20,6 Q30,2 40,6 L44,22 Q30,28 16,22 Z" fill="#C8102E"/>
+                <!-- Neck band shadow -->
+                <rect x="24" y="20" width="12" height="6" rx="2" fill="#9A0B21"/>
+                <!-- Blade -->
+                <path d="M16,24 L24,26 L28,145 L30,155 L32,145 L36,26 L44,24 L38,80 L30,100 L22,80 Z" fill="url(#tg1)"/>
+                <!-- Highlight -->
+                <path d="M29,28 L27,130 L30,152 L30,28 Z" fill="rgba(255,255,255,0.12)"/>
+            </svg>
+            <!-- Tie 2 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg2" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#D4102A"/>
+                        <stop offset="100%" style="stop-color:#8B0818"/>
+                    </linearGradient>
+                </defs>
+                <path d="M18,8 Q30,3 42,8 L45,24 Q30,30 15,24 Z" fill="#C0102C"/>
+                <rect x="24" y="22" width="12" height="6" rx="2" fill="#8B0818"/>
+                <path d="M15,26 L24,28 L27,148 L30,158 L33,148 L36,28 L45,26 L40,82 L30,102 L20,82 Z" fill="url(#tg2)"/>
+                <path d="M29,30 L27,132 L30,155 L30,30 Z" fill="rgba(255,255,255,0.10)"/>
+            </svg>
+            <!-- Tie 3 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg3" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#E82035"/>
+                        <stop offset="100%" style="stop-color:#9E0C1E"/>
+                    </linearGradient>
+                </defs>
+                <path d="M19,7 Q30,2 41,7 L44,23 Q30,29 16,23 Z" fill="#C8102E"/>
+                <rect x="24" y="21" width="12" height="6" rx="2" fill="#960B1E"/>
+                <path d="M16,25 L24,27 L28,146 L30,156 L32,146 L36,27 L44,25 L39,81 L30,101 L21,81 Z" fill="url(#tg3)"/>
+                <path d="M29,29 L27,130 L30,153 L30,29 Z" fill="rgba(255,255,255,0.13)"/>
+            </svg>
+            <!-- Tie 4 -->
+            <svg class="tie-svg" viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="tg4" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#DC1428"/>
+                        <stop offset="100%" style="stop-color:#920A1C"/>
+                    </linearGradient>
+                </defs>
+                <path d="M17,9 Q30,4 43,9 L46,25 Q30,31 14,25 Z" fill="#BE0F28"/>
+                <rect x="24" y="23" width="12" height="6" rx="2" fill="#8A0B1A"/>
+                <path d="M14,27 L24,29 L27,147 L30,157 L33,147 L36,29 L46,27 L41,83 L30,103 L19,83 Z" fill="url(#tg4)"/>
+                <path d="M29,31 L27,131 L30,154 L30,31 Z" fill="rgba(255,255,255,0.11)"/>
+            </svg>
+        </div>
+
+        <div class="header-center">
+            <h1>Белые <span>воротнички</span></h1>
+            <p class="subtitle">{{ title }}</p>
+        </div>
+
+        <div class="header-badge">
+            <span class="report-label">Security Report</span>
+            <span class="report-date">Отчёт об угрозах</span>
+        </div>
+    </header>
+
+    <!-- STATS -->
+    <div class="stats-grid">
+        <div class="stat-card total">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" /></svg>
             </div>
+            <div class="stat-label">Всего угроз</div>
+            <div class="stat-value">{{ actual_findings|length }}</div>
+        </div>
+        <div class="stat-card critical">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.636-1.214 2.86-1.214 3.496 0l5.166 9.868c.61 1.168-.29 2.633-1.645 2.633H4.736c-1.355 0-2.255-1.465-1.645-2.633l5.166-9.868zM10 13a1 1 0 110-2 1 1 0 010 2zm-1.75-5.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="stat-label">Критический</div>
+            <div class="stat-value">{{ stats.by_severity.CRITICAL }}</div>
+        </div>
+        <div class="stat-card high">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="stat-label">Высокий</div>
+            <div class="stat-value">{{ stats.by_severity.HIGH }}</div>
+        </div>
+        <div class="stat-card medium">
+            <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="stat-label">Средний</div>
+            <div class="stat-value">{{ stats.by_severity.MEDIUM }}</div>
+        </div>
+    </div>
+
+    <!-- CHARTS -->
+    {% if actual_findings %}
+    <div class="charts-section">
+        <div class="chart-card">
+            <h3>По критичности</h3>
+            <div class="chart-wrap"><canvas id="severityChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>Топ-5 правил</h3>
+            <div class="chart-wrap"><canvas id="rulesChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>Топ-10 файлов</h3>
+            <div class="chart-wrap"><canvas id="filesChart"></canvas></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- FINDINGS -->
+    <div class="findings-section">
+        <div class="section-header">
+            <h2>Детали находок</h2>
+            {% if actual_findings %}
+            <span class="count-badge">{{ actual_findings|length }}</span>
+            {% endif %}
+        </div>
+
+        {% if not actual_findings %}
+        <div class="no-findings">
+            <div class="shield">🛡️</div>
+            <h3>Секреты не обнаружены</h3>
+            <p>Потенциальные утечки не найдены. Отличная работа!</p>
+        </div>
         {% endif %}
 
         {% for item in actual_findings %}
-            <div class="finding severity-{{ item.finding.severity|lower }}">
-                <div class="finding-header">
-                    <span class="severity">{{ item.finding.severity }}</span>
-                    <span class="rule-name">{{ item.finding.rule_name }}</span>
-                </div>
-                <div class="finding-body">
-                    <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code></p>
-                    {% if item.finding.commit %}
-                    <p><strong>Коммит:</strong> <code>{{ item.finding.commit }}</code></p>
-                    {% endif %}
-                    <p><strong>Секрет:</strong> <code class="secret-value">{{ item.finding.secret }}</code></p>
-                    <p><strong>Строка кода:</strong></p>
-                    <pre class="line-content"><code>{{ item.finding.line_content }}</code></pre>
-                    <p><strong>Уверенность:</strong> {{ "%.2f"|format(item.finding.confidence) }}</p>
-                    {% if item.rule and item.rule.remediation %}
-                    <p><strong>Рекомендация:</strong> {{ item.rule.remediation }}</p>
-                    {% endif %}
-                </div>
+        <div class="finding severity-{{ item.finding.severity|lower }}">
+            <div class="finding-header">
+                <span class="rule-name">{{ item.finding.rule_name }}</span>
+                <span class="sev-pill">{{ item.finding.severity }}</span>
             </div>
-        {% endfor %}
-
-        {% if whitelisted_findings %}
-            <h2>Проигнорировано с помощью .secretsignore ({{ whitelisted_findings|length }})</h2>
-            {% for item in whitelisted_findings %}
-                <div class="finding whitelisted">
-                     <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code> | <strong>Правило:</strong> {{ item.finding.rule_id }}</p>
+            <div class="finding-body">
+                <div class="finding-field">
+                    <span class="field-label">Файл</span>
+                    <span class="field-value">{{ item.finding.file_path }}:{{ item.finding.line_number }}</span>
                 </div>
-            {% endfor %}
-        {% endif %}
-        <a href="{{ url_for('index') }}" class="back-link">← Сканировать другой проект</a>
+                <div class="finding-field">
+                    <span class="field-label">Уверенность</span>
+                    <span class="field-value">{{ "%.2f"|format(item.finding.confidence) }}</span>
+                </div>
+                <div class="finding-field">
+                    <span class="field-label">Секрет</span>
+                    <span class="field-value secret">{{ item.finding.secret }}</span>
+                </div>
+                <div class="finding-field full">
+                    <span class="field-label">Строка кода</span>
+                    <pre class="line-content"><code>{{ item.finding.line_content }}</code></pre>
+                </div>
+                {% if item.rule and item.rule.remediation %}
+                <div class="remediation-box">{{ item.rule.remediation }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
     </div>
+
+    <!-- FOOTER -->
+    <footer>
+        <span>Powered by</span>
+        <img
+            class="croc-img"
+            src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/CROC_Incorporated.png/250px-CROC_Incorporated.png"
+            alt="КРОК"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';"
+        />
+        <span style="display:none; font-weight:700; letter-spacing:0.05em;">КРОК</span>
+    </footer>
+</div>
+
+{% if stats %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    try {
+        const stats = {{ stats | tojson | safe }};
+        const font = { family: 'DM Sans', size: 12 };
+
+        // 1. Doughnut — severity
+        const sCtx = document.getElementById('severityChart');
+        if (sCtx) {
+            new Chart(sCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+                    datasets: [{
+                        data: [
+                            stats.by_severity.CRITICAL,
+                            stats.by_severity.HIGH,
+                            stats.by_severity.MEDIUM,
+                            stats.by_severity.LOW
+                        ],
+                        backgroundColor: ['#C8102E', '#E8610A', '#1A56DB', '#0A7A4B'],
+                        borderColor: '#FFFFFF',
+                        borderWidth: 4,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '72%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { font, padding: 14, boxWidth: 12, boxHeight: 12, borderRadius: 3 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. Bar — top rules
+        const rCtx = document.getElementById('rulesChart');
+        if (rCtx && Object.keys(stats.top_rules).length > 0) {
+            new Chart(rCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(stats.top_rules),
+                    datasets: [{
+                        data: Object.values(stats.top_rules),
+                        backgroundColor: [
+                            'rgba(200,16,46,0.85)',
+                            'rgba(232,97,10,0.85)',
+                            'rgba(26,86,219,0.85)',
+                            'rgba(10,122,75,0.85)',
+                            'rgba(124,58,237,0.85)'
+                        ],
+                        borderRadius: 6,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font, maxRotation: 25 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#F0EEE8', drawBorder: false },
+                            ticks: { font, precision: 0 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 3. Horizontal bar — top files
+        const fCtx = document.getElementById('filesChart');
+        if (fCtx && Object.keys(stats.top_files).length > 0) {
+            new Chart(fCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(stats.top_files).map(l =>
+                        l.length > 32 ? '…' + l.slice(-29) : l
+                    ),
+                    datasets: [{
+                        data: Object.values(stats.top_files),
+                        backgroundColor: 'rgba(200,16,46,0.12)',
+                        borderColor: 'rgba(200,16,46,0.8)',
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: { color: '#F0EEE8', drawBorder: false },
+                            ticks: { font, precision: 0 }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { font }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.error("Chart render error:", e);
+    }
+});
+</script>
+{% endif %}
 </body>
 </html>
 
