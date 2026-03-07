@@ -3,57 +3,379 @@
 <head>
     <meta charset="UTF-8">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-color: #111827;
+            --text-secondary: #6b7280;
+            --border-color: #e5e7eb;
+            --accent-blue: #2563eb;
+            --critical-color: #ef4444;
+            --high-color: #f97316;
+            --medium-color: #3b82f6;
+            --low-color: #22c55e;
+            --font-family: 'Inter', sans-serif;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+            font-size: 14px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            margin-bottom: 2rem;
+            text-align: center;
+            animation: fadeIn 0.5s ease-out;
+        }
+        .ties-container {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .tie-icon {
+            width: 24px;
+            height: 24px;
+            fill: var(--text-secondary);
+            opacity: 0.6;
+        }
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0;
+        }
+        header .subtitle {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            animation: fadeIn 0.5s ease-out forwards;
+            animation-delay: 0.2s;
+            opacity: 0;
+        }
+        .stat-card .label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+        .stat-card .value {
+            font-size: 2.25rem;
+            font-weight: 700;
+        }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-box {
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            position: relative;
+            height: 350px;
+            animation: fadeIn 0.5s ease-out forwards;
+            opacity: 0;
+        }
+        .charts-grid .chart-box:nth-child(1) { animation-delay: 0.3s; }
+        .charts-grid .chart-box:nth-child(2) { animation-delay: 0.4s; }
+        .charts-grid .chart-box:nth-child(3) { animation-delay: 0.5s; }
+        .chart-box h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 0 0 1rem 0;
+            text-align: center;
+        }
+        .findings-container h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+        .finding {
+            background-color: var(--card-bg);
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+            border-left-width: 4px;
+            transition: all 0.2s ease-in-out;
+            overflow: hidden;
+        }
+        .finding:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .finding.severity-critical { border-left-color: var(--critical-color); }
+        .finding.severity-high { border-left-color: var(--high-color); }
+        .finding.severity-medium { border-left-color: var(--medium-color); }
+        .finding.severity-low { border-left-color: var(--low-color); }
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1.25rem;
+            background-color: #f9fafb;
+        }
+        .rule-name { font-weight: 600; }
+        .severity {
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            color: white;
+        }
+        .severity-critical .severity { background-color: var(--critical-color); }
+        .severity-high .severity { background-color: var(--high-color); }
+        .severity-medium .severity { background-color: var(--medium-color); }
+        .severity-low .severity { background-color: var(--low-color); }
+        .finding-body { padding: 1.25rem; font-size: 0.875rem; line-height: 1.5; }
+        .finding-body p { margin: 0 0 0.75rem 0; }
+        .finding-body strong { font-weight: 600; color: var(--text-secondary); }
+        .finding-body code {
+            font-family: monospace;
+            background-color: var(--bg-color);
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-size: 0.85em;
+        }
+        .secret-value { color: var(--critical-color); font-weight: 600; }
+        pre.line-content {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .no-findings {
+            text-align: center;
+            padding: 4rem;
+            background-color: var(--card-bg);
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+        }
+        .no-findings .icon { font-size: 3rem; }
+        .no-findings .message { font-size: 1.25rem; font-weight: 500; margin-top: 1rem; color: var(--text-secondary); }
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+        .croc-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .croc-logo svg {
+            height: 24px;
+            width: auto;
+        }
+        @media (max-width: 900px) {
+            .charts-grid { grid-template-columns: 1fr; height: auto; }
+            .chart-box { height: 350px; }
+        }
+        @media (max-width: 640px) {
+            body { padding: 1rem; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            header h1 { font-size: 1.875rem; }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚨 {{ title }}</h1>
-        
         {% set actual_findings = findings_with_rules|rejectattr('finding.whitelisted')|list %}
-        {% set whitelisted_findings = findings_with_rules|selectattr('finding.whitelisted')|list %}
-
-        <p>Найдено реальных угроз: <strong>{{ actual_findings|length }}</strong></p>
-        
-        {% if not actual_findings %}
-            <div class="finding severity-clean">
-                <div class="finding-header">
-                    <span class="severity">Чисто</span>
-                    <span class="rule-name">Потенциальные секреты не обнаружены</span>
-                </div>
+        <header>
+            <div class="ties-container">
+                <svg class="tie-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5,3.00101c-0.27612,0-0.5,0.22388-0.5,0.5v1.33398l-2.5,10l-1.5-1V3.50101c0-0.27612-0.22388-0.5-0.5-0.5S8,3.22489,8,3.50101v10.33398l-1.5,1.00195l-2.5-10V3.50101c0-0.27612-0.22388-0.5-0.5-0.5s-0.5,0.22388-0.5,0.5v10.66797l-1,0.66602v1.00195l6,4.00391C11.69434,20.82083,11.84619,20.834,12,20.834s0.30566-0.01318,0.5-0.04199l6-4.00391v-1.00195l-1-0.66602V3.50101C17,3.22489,16.77612,3.00101,16.5,3.00101S15.5,3.22489,15.5,3.50101z"/></svg>
+                <svg class="tie-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5,3.00101c-0.27612,0-0.5,0.22388-0.5,0.5v1.33398l-2.5,10l-1.5-1V3.50101c0-0.27612-0.22388-0.5-0.5-0.5S8,3.22489,8,3.50101v10.33398l-1.5,1.00195l-2.5-10V3.50101c0-0.27612-0.22388-0.5-0.5-0.5s-0.5,0.22388-0.5,0.5v10.66797l-1,0.66602v1.00195l6,4.00391C11.69434,20.82083,11.84619,20.834,12,20.834s0.30566-0.01318,0.5-0.04199l6-4.00391v-1.00195l-1-0.66602V3.50101C17,3.22489,16.77612,3.00101,16.5,3.00101S15.5,3.22489,15.5,3.50101z"/></svg>
+                <svg class="tie-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5,3.00101c-0.27612,0-0.5,0.22388-0.5,0.5v1.33398l-2.5,10l-1.5-1V3.50101c0-0.27612-0.22388-0.5-0.5-0.5S8,3.22489,8,3.50101v10.33398l-1.5,1.00195l-2.5-10V3.50101c0-0.27612-0.22388-0.5-0.5-0.5s-0.5,0.22388-0.5,0.5v10.66797l-1,0.66602v1.00195l6,4.00391C11.69434,20.82083,11.84619,20.834,12,20.834s0.30566-0.01318,0.5-0.04199l6-4.00391v-1.00195l-1-0.66602V3.50101C17,3.22489,16.77612,3.00101,16.5,3.00101S15.5,3.22489,15.5,3.50101z"/></svg>
+                <svg class="tie-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5,3.00101c-0.27612,0-0.5,0.22388-0.5,0.5v1.33398l-2.5,10l-1.5-1V3.50101c0-0.27612-0.22388-0.5-0.5-0.5S8,3.22489,8,3.50101v10.33398l-1.5,1.00195l-2.5-10V3.50101c0-0.27612-0.22388-0.5-0.5-0.5s-0.5,0.22388-0.5,0.5v10.66797l-1,0.66602v1.00195l6,4.00391C11.69434,20.82083,11.84619,20.834,12,20.834s0.30566-0.01318,0.5-0.04199l6-4.00391v-1.00195l-1-0.66602V3.50101C17,3.22489,16.77612,3.00101,16.5,3.00101S15.5,3.22489,15.5,3.50101z"/></svg>
             </div>
+            <h1>Белые воротнички</h1>
+            <p class="subtitle">{{ title }}</p>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Всего угроз найдено</div>
+                <div class="value">{{ actual_findings|length }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Критический уровень</div>
+                <div class="value" style="color: var(--critical-color)">{{ stats.by_severity.CRITICAL }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Высокий уровень</div>
+                <div class="value" style="color: var(--high-color)">{{ stats.by_severity.HIGH }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Средний уровень</div>
+                <div class="value" style="color: var(--medium-color)">{{ stats.by_severity.MEDIUM }}</div>
+            </div>
+        </div>
+
+        {% if actual_findings %}
+        <div class="charts-grid">
+            <div class="chart-box">
+                <h2>Угрозы по критичности</h2>
+                <canvas id="severityChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <h2>Топ-5 правил</h2>
+                <canvas id="rulesChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <h2>Топ-10 файлов</h2>
+                <canvas id="filesChart"></canvas>
+            </div>
+        </div>
         {% endif %}
 
-        {% for item in actual_findings %}
-            <div class="finding severity-{{ item.finding.severity|lower }}">
-                <div class="finding-header">
-                    <span class="severity">{{ item.finding.severity }}</span>
-                    <span class="rule-name">{{ item.finding.rule_name }}</span>
+        <div class="findings-container">
+            <h2>Детали находок</h2>
+            {% if not actual_findings %}
+                <div class="no-findings">
+                    <div class="icon">🛡️</div>
+                    <div class="message">Потенциальные секреты не обнаружены. Отличная работа!</div>
                 </div>
-                <div class="finding-body">
-                    <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code></p>
-                    {% if item.finding.commit %}
-                    <p><strong>Коммит:</strong> <code>{{ item.finding.commit }}</code></p>
-                    {% endif %}
-                    <p><strong>Секрет:</strong> <code class="secret-value">{{ item.finding.secret }}</code></p>
-                    <p><strong>Строка кода:</strong></p>
-                    <pre class="line-content"><code>{{ item.finding.line_content }}</code></pre>
-                    <p><strong>Уверенность:</strong> {{ "%.2f"|format(item.finding.confidence) }}</p>
-                    {% if item.rule and item.rule.remediation %}
-                    <p><strong>Рекомендация:</strong> {{ item.rule.remediation }}</p>
-                    {% endif %}
-                </div>
-            </div>
-        {% endfor %}
+            {% endif %}
 
-        {% if whitelisted_findings %}
-            <h2>Проигнорировано с помощью .secretsignore ({{ whitelisted_findings|length }})</h2>
-            {% for item in whitelisted_findings %}
-                <div class="finding whitelisted">
-                     <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code> | <strong>Правило:</strong> {{ item.finding.rule_id }}</p>
+            {% for item in actual_findings %}
+                <div class="finding severity-{{ item.finding.severity|lower }}">
+                    <div class="finding-header">
+                        <span class="rule-name">{{ item.finding.rule_name }}</span>
+                        <span class="severity">{{ item.finding.severity }}</span>
+                    </div>
+                    <div class="finding-body">
+                        <p><strong>Файл:</strong> <code>{{ item.finding.file_path }}:{{ item.finding.line_number }}</code></p>
+                        <p><strong>Секрет:</strong> <code class="secret-value">{{ item.finding.secret }}</code></p>
+                        <p><strong>Строка кода:</strong></p>
+                        <pre class="line-content"><code>{{ item.finding.line_content }}</code></pre>
+                        <p><strong>Уверенность:</strong> {{ "%.2f"|format(item.finding.confidence) }}</p>
+                        {% if item.rule and item.rule.remediation %}
+                        <p><strong>Рекомендация:</strong> {{ item.rule.remediation }}</p>
+                        {% endif %}
+                    </div>
                 </div>
             {% endfor %}
-        {% endif %}
-        <a href="{{ url_for('index') }}" class="back-link">← Сканировать другой проект</a>
+        </div>
+
+        <footer>
+            <div class="croc-logo">
+                <span>Powered by</span>
+                <svg viewBox="0 0 208 59" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M39.4 58.2C27.8 58.2 18.4 53.1 18.4 41.2V17.4H0V0.8H57.8V17.4H39.4V40.8C39.4 45.4 42.4 47.1 46.4 47.1C47.8 47.1 49.2 46.9 50.6 46.5V57.6C47.6 58.2 43.6 58.4 39.4 58.2Z" fill="#2D322D"></path><path d="M121.2 57.4C117.2 58 113.2 58.2 109.4 58.2C97.2 58.2 88 52.9 88 41.4C88 29.8 97.4 24.6 109.2 24.6C113 24.6 116.8 25 120.4 25.8V37.2C120.4 42.4 116.6 45.9 111.2 45.9C108.2 45.9 106.2 45.1 104.6 43.9V33.6H103.6V44.1C105.4 45.5 108 46.5 111.2 46.5C116.8 46.5 121.2 42.8 121.2 37.2V25.8C125.2 24.2 128.4 21.4 128.4 16.6C128.4 10.8 123.4 7.3 117.2 7.3C110.8 7.3 106.2 10.8 106.2 16.2C106.2 18.4 107.4 20.2 109.2 21.4V21C102.2 22.2 95.2 27.1 95.2 35.1V41.4C95.2 50.9 101.6 57.4 111.4 57.4H112.4V47.1H111.2C108.2 47.1 106.2 45.3 106.2 43.9V33.6H104.6V44.1C106.2 45.5 108.2 46.5 111.2 46.5C116.8 46.5 120.4 42.8 120.4 37.2V25.8C116.8 25 113 24.6 109.2 24.6C97.4 24.6 88 29.8 88 41.4C88 52.9 97.2 58.2 109.4 58.2C113.2 58.2 117.2 58 121.2 57.4V57.4Z" fill="#2D322D"></path><path d="M207.6 57.4C203.6 58 199.6 58.2 195.8 58.2C183.6 58.2 174.4 52.9 174.4 41.4C174.4 29.8 183.8 24.6 195.6 24.6C199.4 24.6 203.2 25 206.8 25.8V37.2C206.8 42.4 203 45.9 197.6 45.9C194.6 45.9 192.6 45.1 191 43.9V33.6H190V44.1C191.8 45.5 194.4 46.5 197.6 46.5C203.2 46.5 206.8 42.8 206.8 37.2V25.8C211.6 24.2 214.8 21.4 214.8 16.6C214.8 10.8 209.8 7.3 203.6 7.3C197.2 7.3 192.6 10.8 192.6 16.2C192.6 18.4 193.8 20.2 195.6 21.4V21C188.6 22.2 181.6 27.1 181.6 35.1V41.4C181.6 50.9 188 57.4 197.8 57.4H198.8V47.1H197.6C194.6 47.1 192.6 45.3 192.6 43.9V33.6H191V44.1C192.6 45.5 194.6 46.5 197.6 46.5C203.2 46.5 206.8 42.8 206.8 37.2V25.8C203.2 25 199.4 24.6 195.6 24.6C183.8 24.6 174.4 29.8 174.4 41.4C174.4 52.9 183.6 58.2 195.8 58.2C199.6 58.2 203.6 58 207.6 57.4V57.4Z" fill="#2D322D"></path><path d="M164.6 58.2C153 58.2 143.6 53.1 143.6 41.2V17.4H125.2V0.8H183V17.4H164.6V40.8C164.6 45.4 167.6 47.1 171.6 47.1C173 47.1 174.4 46.9 175.8 46.5V57.6C172.8 58.2 168.8 58.4 164.6 58.2Z" fill="#8CC63F"></path></svg>
+            </div>
+        </footer>
     </div>
+
+    {% if stats %}
+    <script>
+      document.addEventListener("DOMContentLoaded", function() {
+        try {
+            const stats = {{ stats | tojson | safe }};
+            const chartFont = { family: 'Inter' };
+
+            // 1. График по критичности
+            const severityCtx = document.getElementById('severityChart');
+            if (severityCtx) {
+              new Chart(severityCtx, {
+                type: 'doughnut',
+                data: {
+                  labels: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+                  datasets: [{
+                    data: [stats.by_severity.CRITICAL, stats.by_severity.HIGH, stats.by_severity.MEDIUM, stats.by_severity.LOW],
+                    backgroundColor: ['#ef4444', '#f97316', '#3b82f6', '#22c55e'],
+                    borderColor: 'var(--card-bg)',
+                    borderWidth: 4,
+                  }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '70%',
+                    plugins: { legend: { position: 'right', labels: { font: chartFont, padding: 15 }}}
+                }
+              });
+            }
+
+            // 2. График по правилам
+            const rulesCtx = document.getElementById('rulesChart');
+            if (rulesCtx && Object.keys(stats.top_rules).length > 0) {
+                new Chart(rulesCtx, {
+                    type: 'polarArea',
+                    data: {
+                        labels: Object.keys(stats.top_rules),
+                        datasets: [{
+                            data: Object.values(stats.top_rules),
+                            backgroundColor: ['rgba(239, 68, 68, 0.7)','rgba(249, 115, 22, 0.7)','rgba(59, 130, 246, 0.7)','rgba(34, 197, 94, 0.7)','rgba(168, 85, 247, 0.7)'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { position: 'right', labels: { font: chartFont, padding: 15 }}},
+                        scales: { r: { ticks: { backdropColor: 'transparent' }}}
+                    }
+                });
+            }
+
+            // 3. График по файлам
+            const filesCtx = document.getElementById('filesChart');
+            if (filesCtx && Object.keys(stats.top_files).length > 0) {
+              new Chart(filesCtx, {
+                type: 'bar',
+                data: {
+                  labels: Object.keys(stats.top_files).map(l => l.length > 35 ? '...' + l.slice(-32) : l),
+                  datasets: [{
+                    data: Object.values(stats.top_files),
+                    backgroundColor: 'rgba(37, 99, 235, 0.8)',
+                    borderRadius: 3
+                  }]
+                },
+                options: {
+                  indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: { 
+                      x: { beginAtZero: true, grid: { display: false }, ticks: { font: chartFont } },
+                      y: { grid: { display: false }, ticks: { font: chartFont } }
+                  }
+                }
+              });
+            }
+        } catch (e) {
+            console.error("Ошибка при отрисовке графиков:", e);
+        }
+      });
+    </script>
+    {% endif %}
 </body>
 </html>

@@ -3,3 +3,4 @@ AVITO_PORN_YANDEX = 'eR54UUy9OL34'
 psswrd = 131313130
 pswd = 103114
 pas =  12415
+p_api = "a%1313"

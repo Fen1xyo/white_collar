@@ -85,3 +85,25 @@ h1, h2 {
     background-color: #f2dede;
     border-color: #ebccd1;
 }
+/* Стили для контейнера с графиками */
+.charts-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 40px;
+    margin-bottom: 40px;
+    height: 350px;
+}
+
+.chart-box {
+    position: relative;
+    padding: 15px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.chart-box h2 {
+    font-size: 16px;
+    margin-bottom: 15px;
+    text-align: center;
+}

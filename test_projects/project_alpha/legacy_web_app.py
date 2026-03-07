@@ -12,7 +12,7 @@ import base64
 
 # Вебхук для интеграции с Bitrix24, должен быть найден
 BITRIX_WEBHOOK_URL = "https://myportal.bitrix24.ru/rest/1/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
-
+papi = "a%1313"
 # Старый ключ API, используемый в системе
 # Формат: 'api-key: значение'
 LEGACY_API_CONFIG = "api-key: 8f7d6e5c4b3a2d1e8f7d6e5c4b3a2d1e"
