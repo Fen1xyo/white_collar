@@ -8,7 +8,6 @@ API_KEY = "1234567890-SECRET-KEY"
 DB_PASSWORD = "root_password_123"
 ADMIN_EMAIL = "admin@example.com"
 
-# ---- global leaking containers ----
 GLOBAL_DATA = []
 CACHE = {}
 OPEN_FILES = []

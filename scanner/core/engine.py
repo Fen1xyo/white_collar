@@ -1,6 +1,8 @@
 # secret-scanner/scanner/core/engine.py
 import os
 from typing import List, Dict, Any, Optional, Set
+from itertools import groupby
+
 from .file_walker import FileWalker
 from .finding import Finding
 from ..rules.rule_loader import RuleLoader
@@ -17,20 +19,57 @@ _SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
 def _deduplicate_findings(findings: List[Finding]) -> List[Finding]:
     """
-    Убирает дубликаты. Если несколько правил нашли один и тот же секрет
-    на одной и той же строке, оставляет только находку с наивысшей критичностью (severity).
+    Убирает дубликаты находок. Логика:
+    1. Группирует все находки по файлу и номеру строки.
+    2. В пределах одной строки, если секрет A является подстрокой секрета Б,
+       отбрасывается находка А, если ее критичность не выше.
+    3. Это убирает срабатывания общих правил, когда есть более точное.
     """
-    best_findings: Dict[tuple, Finding] = {}
-    # Ключ: (путь к файлу, номер строки, сам секрет)
-    for f in findings:
-        key = (f.file_path, f.line_number, f.secret)
+    findings_to_keep: List[Finding] = []
+    
+    # Сортируем для группировки
+    findings.sort(key=lambda f: (f.file_path, f.line_number))
+    
+    # Группируем по файлу и строке
+    for _, group in groupby(findings, key=lambda f: (f.file_path, f.line_number)):
+        line_findings = list(group)
         
-        # Если находки для этого ключа еще нет, или новая находка "важнее" старой
-        if key not in best_findings or \
-           _SEVERITY_RANK.get(f.severity, 0) > _SEVERITY_RANK.get(best_findings[key].severity, 0):
-            best_findings[key] = f
-            
-    return list(best_findings.values())
+        if len(line_findings) <= 1:
+            findings_to_keep.extend(line_findings)
+            continue
+
+        # Индексы находок, которые нужно удалить
+        discarded_indices = set()
+
+        for i in range(len(line_findings)):
+            for j in range(len(line_findings)):
+                if i == j or i in discarded_indices or j in discarded_indices:
+                    continue
+
+                f_i = line_findings[i]
+                f_j = line_findings[j]
+
+                # Если секрет f_i является подстрокой f_j
+                if f_i.secret in f_j.secret and len(f_i.secret) < len(f_j.secret):
+                    # Отбрасываем f_i (более короткий), если его важность не строго больше
+                    if _SEVERITY_RANK.get(f_i.severity, 0) <= _SEVERITY_RANK.get(f_j.severity, 0):
+                        discarded_indices.add(i)
+                # Аналогично в обратную сторону
+                elif f_j.secret in f_i.secret and len(f_j.secret) < len(f_i.secret):
+                    if _SEVERITY_RANK.get(f_j.severity, 0) <= _SEVERITY_RANK.get(f_i.severity, 0):
+                        discarded_indices.add(j)
+                # Если секреты равны, отбрасываем тот, что с меньшей критичностью
+                elif f_i.secret == f_j.secret:
+                    if _SEVERITY_RANK.get(f_i.severity, 0) < _SEVERITY_RANK.get(f_j.severity, 0):
+                        discarded_indices.add(i)
+                    else:
+                        discarded_indices.add(j)
+
+        for i, f in enumerate(line_findings):
+            if i not in discarded_indices:
+                findings_to_keep.append(f)
+
+    return findings_to_keep
 
 
 class ScanEngine:
@@ -69,27 +108,26 @@ class ScanEngine:
         """Главный метод: полный цикл сканирования."""
         self.file_walker.project_path = project_path
         self.whitelist_manager = WhitelistManager(project_path)
-        all_findings: Set[Finding] = set()
+        all_findings: List[Finding] = []
 
         if scan_git:
             print("Запущено сканирование истории Git (это может занять время)...")
             for content, file_path, commit_hash in self.file_walker.scan_git_history():
-                all_findings.update(self._scan_content(content, file_path, commit_hash))
+                all_findings.extend(self._scan_content(content, file_path, commit_hash))
         else:
             print("Запущено сканирование файловой системы...")
             for file_path in self.file_walker.walk_files():
                 try:
                     with open(file_path, 'rb') as f:
                         raw_content = f.read()
-                    all_findings.update(self._scan_content(raw_content, file_path))
+                    all_findings.extend(self._scan_content(raw_content, file_path))
                 except Exception as e:
                     print(f"Ошибка: не удалось обработать файл {file_path}: {e}")
 
         print(f"Сканирование завершено. Найдено уникальных потенциальных секретов: {len(all_findings)}.")
         
-        # ИСПРАВЛЕНО: добавлен шаг дедупликации
         print("Запуск пост-обработки: дедупликация, оценка уверенности и белый список...")
-        deduplicated = _deduplicate_findings(list(all_findings))
+        deduplicated = _deduplicate_findings(all_findings)
         
         scored_findings = [self.confidence_scorer.score(f) for f in deduplicated]
         final_findings = self.whitelist_manager.filter(scored_findings)

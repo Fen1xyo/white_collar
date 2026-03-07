@@ -36,7 +36,7 @@ class SecretReconstructor(ast.NodeVisitor):
                     return left + right
                 except TypeError:
                     return None
-        if isinstance(node, ast.JoinedStr):  # f-string
+        if isinstance(node, ast.JoinedStr):
             parts = [self._evaluate_node(v) for v in node.values]
             if all(p is not None for p in parts):
                 return "".join(map(str, parts))
@@ -114,7 +114,6 @@ class PythonParser(BaseParser):
         all_tokens = []
         tree: Optional[ast.AST] = None  # ИСПРАВЛЕНО: теперь Optional импортирован
 
-        # 1. AST-парсер с отслеживанием переменных и конкатенации
         try:
             tree = ast.parse(source, filename=file_path)
         except SyntaxError:
@@ -125,10 +124,8 @@ class PythonParser(BaseParser):
             visitor.visit(tree)
             all_tokens.extend(visitor.get_tokens())
 
-        # 2. Построчное сканирование — гарантирует работу всех regex-правил
         all_tokens.extend(self._fallback_line_scan(source, file_path))
 
-        # Дедупликация по (value, line)
         unique_tokens = list({(d['value'], d['line']): d for d in all_tokens}.values())
         return unique_tokens
 

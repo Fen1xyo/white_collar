@@ -29,17 +29,13 @@ class RegexDetector(BaseDetector):
             rule = compiled_rule["rule"]
             pattern = compiled_rule["pattern"]
             try:
-                # Ищем все непересекающиеся совпадения в строке
                 matches = pattern.finditer(content)
                 for match in matches:
-                    # Если в regex есть группы, приоритет у первой группы, иначе - полное совпадение
                     secret = match.group(1) if match.groups() else match.group(0)
                     
-                    # Пропускаем пустые находки
                     if not secret:
                         continue
                         
-                    # Создаем объект находки
                     finding = Finding(
                         file_path=file_path,
                         line_number=line_number,
@@ -48,10 +44,9 @@ class RegexDetector(BaseDetector):
                         rule_name=rule.name,
                         severity=rule.severity,
                         secret=secret,
-                        line_content=content.strip() # Сохраняем всю строку для контекста
+                        line_content=content.strip() 
                     )
                     findings.append(finding)
             except Exception as e:
-                # Этот блок перехватывает неожиданные ошибки во время выполнения finditer
                 print(f"Ошибка при применении правила '{rule.id}' к файлу {file_path}:{line_number}: {e}")
         return findings

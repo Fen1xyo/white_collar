@@ -10,7 +10,7 @@ rules:
     name: "Secret in C/C++ #define"
     # ИСПРАВЛЕНО: флаг (?i) перенесен в начало выражения.
     pattern: >-
-      (?i)^\s*#\s*define\s+(?:\w*(?:key|secret|token|password|auth|api)\w*)\s+"([a-zA-Z0-9\-_!@#$%^&*()\/+%]{8,})"
+      (?i)^\s*#\s*define\s+(?:\w*(?:key|secret|token|password|auth|api|user|usr|username|usrname|usrnm|UserName|nameuser|user_name)\w*)\s+"([a-zA-Z0-9\-_!@#$%^&*()\/+%]{8,})"
     severity: HIGH
     description: "Обнаружен потенциальный секрет в директиве препроцессора #define. Это частый способ хранения ключей в C/C++."
     remediation: "Избегайте хранения секретов в исходном коде, даже в #define. Используйте переменные окружения или защищенное хранилище."
